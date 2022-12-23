@@ -45,6 +45,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import com.google.gson.InstanceCreator;
 import com.google.gson.JsonObject;
+import java.util.prefs.Preferences;
 import java.util.LinkedHashSet;
 import org.eclipse.lsp4j.CallHierarchyRegistrationOptions;
 import org.eclipse.lsp4j.CodeActionKind;
@@ -77,6 +78,7 @@ import org.eclipse.lsp4j.jsonrpc.JsonRpcException;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.jsonrpc.MessageConsumer;
 import org.eclipse.lsp4j.jsonrpc.MessageIssueException;
+import org.eclipse.lsp4j.jsonrpc.RemoteEndpoint;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.jsonrpc.messages.Message;
 import org.eclipse.lsp4j.jsonrpc.messages.NotificationMessage;
@@ -118,8 +120,10 @@ import org.netbeans.spi.project.ActionProgress;
 import org.netbeans.spi.project.ActionProvider;
 import org.openide.filesystems.FileObject;
 import org.openide.filesystems.FileUtil;
+import org.openide.util.Exceptions;
 import org.openide.util.Lookup;
 import org.openide.util.NbBundle;
+import org.openide.util.NbPreferences;
 import org.openide.util.Pair;
 import org.openide.util.RequestProcessor;
 import org.openide.util.lookup.AbstractLookup;
@@ -177,6 +181,10 @@ public final class Server {
                         return new SemanticTokensParams(new TextDocumentIdentifier(""));
                     }
                 });
+            })
+            .setExceptionHandler((t) -> {
+                LOG.log(Level.WARNING, "Error occurred during LSP message dispatch", t);
+                return RemoteEndpoint.DEFAULT_EXCEPTION_HANDLER.apply(t);
             })
             .create();
     }
@@ -253,6 +261,9 @@ public final class Server {
                         Lookups.executeWith(ll, () -> {
                             try {
                                 delegate.consume(msg);
+                            } catch (RuntimeException | Error e) {
+                                LOG.log(Level.WARNING, "Error occurred during message dispatch", e);
+                                throw e;
                             } finally {
                                 // cancel while the OperationContext is still active.
                                 if (ftoCancel != null) {
@@ -730,8 +741,8 @@ public final class Server {
                 chOpts.setWorkDoneProgress(true);
                 capabilities.setCallHierarchyProvider(chOpts);
                 Set<String> commands = new LinkedHashSet<>(Arrays.asList(GRAALVM_PAUSE_SCRIPT,
-                        JAVA_BUILD_WORKSPACE,
-                        JAVA_CLEAN_WORKSPACE,
+                        NBLS_BUILD_WORKSPACE,
+                        NBLS_CLEAN_WORKSPACE,
                         JAVA_RUN_PROJECT_ACTION,
                         JAVA_FIND_DEBUG_ATTACH_CONFIGURATIONS,
                         JAVA_FIND_DEBUG_PROCESS_TO_ATTACH,
@@ -747,7 +758,9 @@ public final class Server {
                         JAVA_SUPER_IMPLEMENTATION,
                         JAVA_SOURCE_FOR,
                         JAVA_CLEAR_PROJECT_CACHES,
-                        NATIVE_IMAGE_FIND_DEBUG_PROCESS_TO_ATTACH));
+                        NATIVE_IMAGE_FIND_DEBUG_PROCESS_TO_ATTACH,
+                        JAVA_PROJECT_INFO
+                ));
                 for (CodeActionsProvider codeActionsProvider : Lookup.getDefault().lookupAll(CodeActionsProvider.class)) {
                     commands.addAll(codeActionsProvider.getCommands());
                 }
@@ -769,6 +782,7 @@ public final class Server {
             NbCodeClientCapabilities capa = NbCodeClientCapabilities.get(init);
             client.setClientCaps(capa);
             hackConfigureGroovySupport(capa);
+            hackNoReuseOfOutputsForAntProjects();
             List<FileObject> projectCandidates = new ArrayList<>();
             List<WorkspaceFolder> folders = init.getWorkspaceFolders();
             if (folders != null) {
@@ -890,15 +904,15 @@ public final class Server {
             });
             sessionServices.add(new WorkspaceUIContext(client));
             sessionServices.add(treeService.getNodeRegistry());
-            sessionServices.add(inputService);
+            sessionServices.add(inputService.getRegistry());
             ((LanguageClientAware) getTextDocumentService()).connect(client);
             ((LanguageClientAware) getWorkspaceService()).connect(client);
             ((LanguageClientAware) treeService).connect(client);
         }
     }
 
-    public static final String JAVA_BUILD_WORKSPACE =  "java.build.workspace";
-    public static final String JAVA_CLEAN_WORKSPACE =  "java.clean.workspace";
+    public static final String NBLS_BUILD_WORKSPACE =  "nbls.build.workspace";
+    public static final String NBLS_CLEAN_WORKSPACE =  "nbls.clean.workspace";
     public static final String JAVA_NEW_FROM_TEMPLATE =  "java.new.from.template";
     public static final String JAVA_NEW_PROJECT =  "java.new.project";
     public static final String JAVA_GET_PROJECT_SOURCE_ROOTS = "java.get.project.source.roots";
@@ -941,6 +955,12 @@ public final class Server {
      * new project files were generated into workspace subtree.
      */
     public static final String JAVA_CLEAR_PROJECT_CACHES =  "java.clear.project.caches";
+    
+    /**
+     * For a project directory, returns basic project information and structure.
+     * Syntax: nbls.project.info(locations : String | String[], options? : { projectStructure? : boolean; actions? : boolean; recursive? : boolean }) : LspProjectInfo
+     */
+    public static final String JAVA_PROJECT_INFO = "nbls.project.info";
 
     static final String INDEXING_COMPLETED = "Indexing completed.";
     static final String NO_JAVA_SUPPORT = "Cannot initialize Java support on JDK ";
@@ -1045,6 +1065,12 @@ public final class Server {
         }
 
         @Override
+        public CompletableFuture<String> execInHtmlPage(HtmlPageParams params) {
+            logWarning(params);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
         public CompletableFuture<Void> configurationUpdate(UpdateConfigParams params) {
             logWarning(params);
             return CompletableFuture.completedFuture(null);
@@ -1062,14 +1088,36 @@ public final class Server {
     private static void hackConfigureGroovySupport(NbCodeClientCapabilities caps) {
         boolean b = caps != null && caps.wantsGroovySupport();
         try {
-            Class clazz = Lookup.getDefault().lookup(ClassLoader.class).loadClass("org.netbeans.modules.groovy.editor.api.GroovyIndexer");
+            Class<?> clazz = Lookup.getDefault().lookup(ClassLoader.class).loadClass("org.netbeans.modules.groovy.editor.api.GroovyIndexer");
             Method m = clazz.getDeclaredMethod("setIndexingEnabled", Boolean.TYPE);
             m.setAccessible(true);
             m.invoke(null, b);
+        } catch (ClassNotFoundException ex) {
+            // java.lang.ClassNotFoundException is expected when Groovy support is not activated / enabled. Do not log, if the
+            // client wants groovy disabled, which is obviuously true in this case :)
+            if (b && !groovyClassWarningLogged) {
+                groovyClassWarningLogged = true;
+                LOG.log(Level.WARNING, "Unable to configure Groovy indexing: Groovy support is not enabled");
+            }
         } catch (ReflectiveOperationException ex) {
             if (!groovyClassWarningLogged) {
                 groovyClassWarningLogged = true;
                 LOG.log(Level.WARNING, "Unable to configure Groovy support", ex);
+            }
+        }
+    }
+
+    private static boolean antClassWarningLogged;
+    private static void hackNoReuseOfOutputsForAntProjects() {
+        final String PROP_AUTO_CLOSE_TABS = "autoCloseTabs"; // NOI18N
+        try {
+            Class antSettings = Lookup.getDefault().lookup(ClassLoader.class).loadClass("org.apache.tools.ant.module.AntSettings");
+            Preferences prefs = NbPreferences.forModule(antSettings);
+            prefs.putBoolean(PROP_AUTO_CLOSE_TABS, false);
+        } catch (ReflectiveOperationException ex) {
+            if (!antClassWarningLogged) {
+                antClassWarningLogged = true;
+                LOG.log(Level.WARNING, "Unable to configure Ant support", ex);
             }
         }
     }

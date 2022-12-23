@@ -1294,9 +1294,17 @@ public class PhpParserErrorTest extends PHPTestBase {
         checkErrors("testfiles/parser/php81/enumerations_02.php");
     }
 
+    public void testEnumerations_03() throws Exception {
+        checkErrors("testfiles/parser/php81/enumerations_03.php");
+    }
+
     public void testEnumAsTypeName() throws Exception {
         // We can use "enum" as a type name
         checkErrors("testfiles/parser/php81/enumAsTypeName.php");
+    }
+
+    public void testFirstClassCallableSyntax_01() throws Exception {
+        checkErrors("testfiles/parser/php81/firstClassCallableSyntax_01.php");
     }
 
     public void testTreatNamespacedNamesAsSingleToken_01a() throws Exception {
@@ -1345,6 +1353,10 @@ public class PhpParserErrorTest extends PHPTestBase {
 
     public void testTreatNamespacedNamesAsSingleTokenError_03b() throws Exception {
         checkErrors("testfiles/parser/php80/treatNamespacedNamesAsSingleTokenError_03b.php");
+    }
+
+    public void testGH4684() throws Exception {
+        checkErrors("testfiles/parser/gh4684.php");
     }
 
 }

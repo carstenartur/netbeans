@@ -640,6 +640,7 @@ non terminal Expression static_reference_constant;
 non terminal Expression static_array_creation_with_access;
 non terminal Expression static_constant_array_access;
 non terminal Expression static_class_constant_array_access;
+non terminal Expression class_constant_array_access;
 non terminal Expression static_array_creation;
 non terminal VariableBase base_variable_with_function_calls;
 
@@ -2701,6 +2702,13 @@ non_empty_function_call_parameter_list:paramsList possible_comma
     RESULT = paramsList;
 :}
 
+| T_ELLIPSIS:e
+{:
+    // NETBEANS-5899 PHP 8.1: First class callable syntax
+    // e.g. strlen(...);
+    RESULT = Collections.singletonList(new FirstClassCallableArg(eleft, eright));
+:}
+
 | /* empty */
 {:
     RESULT = new LinkedList();
@@ -4729,14 +4737,19 @@ static_scalar_value_with_class_instance:scalar
 ;
 
 static_class_constant ::=
-class_name:className T_PAAMAYIM_NEKUDOTAYIM static_reference_constant:constant
+class_name:className T_PAAMAYIM_NEKUDOTAYIM static_class_constant_array_access:constant
+{:
+    RESULT = new StaticConstantAccess(classNameleft, constantright, className, constant);
+:}
+
+| class_name:className T_PAAMAYIM_NEKUDOTAYIM identifier:constant
 {:
     RESULT = new StaticConstantAccess(classNameleft, constantright, className, constant);
 :}
 ;
 
 static_reference_constant ::=
-static_class_constant_array_access:arrayAccess
+class_constant_array_access:arrayAccess
 {:
     RESULT = arrayAccess;
 :}
@@ -4744,6 +4757,18 @@ static_class_constant_array_access:arrayAccess
 | identifier:constantName
 {:
     RESULT = constantName;
+:}
+;
+
+class_constant_array_access ::=
+class_constant_array_access:arrayAccess T_OPEN_RECT:o expr:index T_CLOSE_RECT:end
+{:
+    RESULT = new ExpressionArrayAccess(arrayAccessleft, endright, arrayAccess, new ArrayDimension(oleft, endright, index, ArrayDimension.Type.VARIABLE_ARRAY));
+:}
+
+| identifier:constantName T_OPEN_RECT:o expr:index T_CLOSE_RECT:end
+{:
+    RESULT = new ExpressionArrayAccess(constantNameleft, endright, constantName, new ArrayDimension(oleft, endright, index, ArrayDimension.Type.VARIABLE_ARRAY));
 :}
 ;
 
@@ -5094,6 +5119,33 @@ base_variable_with_function_calls:var T_OBJECT_OPERATOR object_property:memberPr
     // e.g. ($uvs = new UVS())::staticMethod();
     DereferencableVariable var = new DereferencableVariable(peleft, peright, pe.getExpression());
     RESULT = parser.createDispatch(ASTPHP5Parser.Access.STATIC, var, memberProperty, memberPropertyleft, memberPropertyright, paramsList, paramsListright, propertyList, aa);
+:}
+
+// Backed cases have an additional read-only property (value)
+// e.g. EnumName::CASE_NAME->value;
+// see https://www.php.net/manual/en/language.enumerations.backed.php
+| class_name:className T_PAAMAYIM_NEKUDOTAYIM identifier:constant T_OBJECT_OPERATOR identifier:varName
+{:
+    RESULT = new FieldAccess(classNameleft, varNameright, new StaticConstantAccess(classNameleft, constantright, className, constant),
+            new Variable(varNameleft, varNameright, varName.getName()), false);
+:}
+
+| variable_class_name:className T_PAAMAYIM_NEKUDOTAYIM identifier:constant T_OBJECT_OPERATOR identifier:varName
+{:
+    RESULT = new FieldAccess(classNameleft, varNameright, new StaticConstantAccess(classNameleft, constantright, className, constant),
+            new Variable(varNameleft, varNameright, varName.getName()), false);
+:}
+
+| class_name:className T_PAAMAYIM_NEKUDOTAYIM identifier:constant T_NULLSAFE_OBJECT_OPERATOR identifier:varName
+{:
+    RESULT = new FieldAccess(classNameleft, varNameright, new StaticConstantAccess(classNameleft, constantright, className, constant),
+            new Variable(varNameleft, varNameright, varName.getName()), true);
+:}
+
+| variable_class_name:className T_PAAMAYIM_NEKUDOTAYIM identifier:constant T_NULLSAFE_OBJECT_OPERATOR identifier:varName
+{:
+    RESULT = new FieldAccess(classNameleft, varNameright, new StaticConstantAccess(classNameleft, constantright, className, constant),
+            new Variable(varNameleft, varNameright, varName.getName()), true);
 :}
 ;
 

@@ -95,6 +95,12 @@ public final class Utilities {
     /** Operating system is Windows NT. */
     public static final int OS_WINNT = BaseUtilities.OS_WINNT;
 
+    /** Operating system is Windows 95. */
+    public static final int OS_WIN95 = BaseUtilities.OS_WIN95;
+
+    /** Operating system is Windows 98. */
+    public static final int OS_WIN98 = BaseUtilities.OS_WIN98;
+
     /** Operating system is Solaris. */
     public static final int OS_SOLARIS = BaseUtilities.OS_SOLARIS;
 
@@ -1317,6 +1323,32 @@ public final class Utilities {
             bounds.x + ((bounds.width - componentSize.width) / 2),
             bounds.y + ((bounds.height - componentSize.height) / 2), componentSize.width, componentSize.height
         );
+    }
+
+    /**
+     * This is for use in situations where a standard swing API,
+     * such as {@linkplain JOptionPane.show*} or {@linkplain JFileChooser.show*},
+     * is used to display a dialog. {@code null} should never be used
+     * as a dialog's parent because it
+     * frequently does the wrong thing in a multi-screen setup.
+     * <p>
+     * The use of the NetBeans API
+     * {@linkplain DialogDisplayer.getDefault.*}
+     * is encouraged to display a dialog, but stuff happens.
+     * @return A suitable parent component for swing dialog displayers.
+     * @since 9.26
+     */
+    // PR4739
+    public static Component findDialogParent() {
+        Component parent = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        if (parent == null) {
+            parent = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
+        }
+        if (parent == null) {
+            Frame[] f = Frame.getFrames();
+            parent = f.length == 0 ? null : f[f.length - 1];
+        }
+        return parent;
     }
 
     /** @return size of the screen. The size is modified for Windows OS
