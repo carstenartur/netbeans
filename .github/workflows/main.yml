@@ -481,8 +481,8 @@ jobs:
       - name: ide/html.custom
         run: ant $OPTS -f ide/html.custom test
 
-#      - name: ide/html.editor
-#        run: ant $OPTS -f ide/html.editor test
+      - name: ide/html.editor
+        run: ant $OPTS -f ide/html.editor test
 
 #      - name: ide/html.lexer
 #        run: ant $OPTS -f ide/html.lexer test
@@ -549,6 +549,9 @@ jobs:
 
       - name: ide/o.openidex.util
         run: ant $OPTS -f ide/o.openidex.util test
+
+      - name: ide/options.editor
+        run: ant $OPTS -f ide/options.editor test
 
 #      - name: ide/parsing.api
 #        run: ant $OPTS -f ide/parsing.api test
@@ -1895,6 +1898,9 @@ jobs:
 
       - name: spring.webmvc
         run: ant $OPTS -f enterprise/spring.webmvc test
+
+      - name: tomcat5
+        run: ant $OPTS -f enterprise/tomcat5 test
 
       - name: websvc.editor.hints
         run: ant $OPTS -f enterprise/websvc.editor.hints test
