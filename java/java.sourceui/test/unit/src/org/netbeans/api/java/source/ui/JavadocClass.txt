@@ -16,25 +16,44 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.netbeans.modules.cloud.oracle;
-
-import org.netbeans.modules.cloud.oracle.items.OCIItem;
-import org.openide.nodes.Node;
 
 /**
+ * This is an example class.
  *
- * @author Jan Horvath
+ * @since now
  */
-@FunctionalInterface
-public interface NodeProvider<T extends OCIItem> {
-    
-    public Node apply(T t);
-    
-    public interface SessionAware<T extends OCIItem> extends NodeProvider<T> {
-        public default Node apply(T t) {
-            return apply(t, OCIManager.getDefault().getActiveSession());
-        }
+public class JavadocClass {
 
-        public Node apply(T t, OCISessionInitiator session);
+    /**
+     * This is the default constructor.
+     */
+    public JavadocClass() {
+    }
+
+    /**
+     * This is a constructor taking a single String parameter.
+     *
+     * @param param A parameter
+     */
+    public JavadocClass(String param) {
+    }
+
+    /**
+     * This is a constructor taking two String parameters.
+     *
+     * @param param1 Parameter one.
+     * @param param2 Parameter two.
+     */
+    public JavadocClass(String param1, String param2) {
+    }
+
+    /**
+     * A method.
+     *
+     * @return "hi"
+     */
+    public String hi() {
+        return "hi";
     }
 }
+

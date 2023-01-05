@@ -16,25 +16,29 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.netbeans.modules.cloud.oracle;
-
-import org.netbeans.modules.cloud.oracle.items.OCIItem;
-import org.openide.nodes.Node;
 
 /**
- *
- * @author Jan Horvath
+ * This is an example enum.
  */
-@FunctionalInterface
-public interface NodeProvider<T extends OCIItem> {
-    
-    public Node apply(T t);
-    
-    public interface SessionAware<T extends OCIItem> extends NodeProvider<T> {
-        public default Node apply(T t) {
-            return apply(t, OCIManager.getDefault().getActiveSession());
-        }
+public enum JavadocEnum {
 
-        public Node apply(T t, OCISessionInitiator session);
+    /**
+     * The first value.
+     */
+    FIRST,
+    /**
+     * The second value.
+     */
+    SECOND;
+
+    /**
+     * A method.
+     *
+     * @return "hi"
+     */
+    public String hi() {
+        return "hi";
     }
+
 }
+
