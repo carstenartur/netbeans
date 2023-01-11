@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.netbeans.modules.languages.antlr;
+package org.netbeans.spi.lexer.antlr4;
 
 import java.util.ArrayList;
 import java.util.ListIterator;
@@ -28,6 +28,8 @@ import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.TokenSource;
 
 /**
+ * This class provides sequential cursor based access to ANTLR Lexer tokens.
+ * The cursor can be sought in the input stream.
  *
  * @author lkishalmi
  */
@@ -41,8 +43,10 @@ public final class AntlrTokenSequence {
     
     private final ArrayList<Token> tokenList = new ArrayList<>(200);
 
+    /** Predicate constant to select tokens on the DEFAULT_CHANNEL */
     public static final Predicate<Token> DEFAULT_CHANNEL = new ChannelFilter(Lexer.DEFAULT_TOKEN_CHANNEL);
-    
+
+    /** Predicate class to filter tokens by a selected channel */
     public static final class ChannelFilter implements Predicate<Token> {
         private final int channel;
 
@@ -55,12 +59,24 @@ public final class AntlrTokenSequence {
             return channel == t.getChannel();
         }
     }
-    
+
+    /**
+     * Creates a AntlrTokenSequence over the provided TokenSource (Lexer)
+     *
+     * @param tokens the token source to be read.
+     */
     public AntlrTokenSequence(TokenSource tokens) {
         this.tokens = tokens;
         this.cursor = tokenList.listIterator();
     }
-    
+
+    /**
+     * Seeks the cursor to an offset in the input stream. If the offset is
+     * inside a token, then the {@linkplain #next()} method would return the
+     * token which contains the offset.
+     *
+     * @param offset the position in the lexer input stream to seek to.
+     */
     public void seekTo(int offset) {
         if (offset > readIndex) {
             if (cursor.hasNext()) {
@@ -90,11 +106,21 @@ public final class AntlrTokenSequence {
         }
         
     }
-    
+
+    /**
+     * Returns {@code true} if the lexer stream is empty.
+     *
+     * @return {@code true} if the lexer stream is empty.
+     */
     public boolean isEmpty() {
         return tokenList.isEmpty() && !hasNext();
     }
     
+    /**
+     * Returns {@code true} if there is a token to read after the cursor.
+     *
+     * @return {@code true} if there is a token to read after the cursor.
+     */
     public boolean hasNext() {
         if (!eofRead && (cursorOffset == readIndex) && !cursor.hasNext()) {
             Token t = read();
@@ -105,14 +131,31 @@ public final class AntlrTokenSequence {
         return !(eofRead && !cursor.hasNext());
     }
     
+    /**
+     * Returns {@code true} if there is a token to read before the cursor.
+     *
+     * @return {@code true} if there is a token to read before the cursor.
+     */
     public boolean hasPrevious() {
         return cursor.hasPrevious();
     }
-    
+
+    /**
+     * Returns the offset of the cursor. It always returns index on token
+     * boundary.
+     *
+     * @return the offset of the cursor.
+     */
     public int getOffset() {
         return cursorOffset;
     }
-    
+
+    /**
+     * Returns the token before the cursor if there is one. It also moves the
+     * cursor left by one.
+     *
+     * @return the token before the cursor.
+     */
     public Optional<Token> previous() {
         Optional<Token> ret = cursor.hasPrevious() ? Optional.of(cursor.previous()) : Optional.empty();
         cursorOffset = cursor.hasPrevious() ? ret.get().getStartIndex() : 0;
@@ -120,6 +163,13 @@ public final class AntlrTokenSequence {
         
     }
     
+    /**
+     * Returns the token before the cursor that satisfies the provided predicate
+     * condition. It also moves the cursor at the start of the returned token.
+     *
+     * @param filter the predicate to satisfy.
+     * @return the token before the cursor.
+     */
     public Optional<Token> previous(Predicate<Token> filter) {
         Optional<Token> ot = previous();
         while (ot.isPresent() && !filter.test(ot.get())) {
@@ -128,10 +178,23 @@ public final class AntlrTokenSequence {
         return ot;
     }
     
+    /**
+     * Returns the token before the cursor that matches the provided token type.
+     * It also moves the cursor at the start of the returned token.
+     *
+     * @param tokenType the searched token type
+     * @return the token before the cursor.
+     */
     public Optional<Token> previous(int tokenType){
         return previous((Token t) -> t.getType() == tokenType);
     }
     
+    /**
+     * Returns the token after the cursor if there is one. It also moves the
+     * cursor right by one.
+     *
+     * @return the token after the cursor.
+     */
     public Optional<Token> next() {
         if (hasNext()) {
             Token t = cursor.next();
@@ -142,6 +205,13 @@ public final class AntlrTokenSequence {
         }
     }
     
+    /**
+     * Returns the token after the cursor that satisfies the provided predicate
+     * condition. It also moves the cursor at the end of the returned token.
+     *
+     * @param filter the predicate to satisfy.
+     * @return the token after the cursor.
+     */
     public Optional<Token> next(Predicate<Token> filter) {
         Optional<Token> ot = next();
         while (ot.isPresent() && !filter.test(ot.get())) {
@@ -150,6 +220,13 @@ public final class AntlrTokenSequence {
         return ot;
     }
     
+    /**
+     * Returns the token after the cursor that matches the provided token type.
+     * It also moves the cursor at the end of the returned token.
+     *
+     * @param tokenType the searched token type
+     * @return the token after the cursor.
+     */
     public Optional<Token> next(int tokenType){
         return next((Token t) -> t.getType() == tokenType);
     }

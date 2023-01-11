@@ -16,29 +16,24 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.netbeans.modules.classfile;
+package org.netbeans.modules.css.editor.csl;
 
-import junit.framework.*;
+import org.netbeans.modules.css.editor.module.main.CssModuleTestBase;
+import org.netbeans.modules.css.lib.api.CssParserResult;
 
-/**
- *
- * @author tball
- */
-public class ConstantPoolTest extends TestCase {
-    
-    public ConstantPoolTest(String testName) {
-        super(testName);
-    }
-    
-    public void testGet() {
+public class CssSemanticAnalyzerTest extends CssModuleTestBase {
+
+    public CssSemanticAnalyzerTest(String name) {
+        super(name);
     }
 
-    public void testGetClass() {
+    @Override
+    protected void setUp() throws Exception {
+        super.setUp();
+        CssParserResult.IN_UNIT_TESTS = true;
     }
 
-    public void testGetAllConstants() {
-    }
-
-    public void testGetAllClassNames() {
+    public void testColoring1() throws Exception {
+        checkSemantic("testfiles/coloring1.css");
     }
 }

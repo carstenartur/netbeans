@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.netbeans.modules.languages.toml;
+package org.netbeans.spi.lexer.antlr4;
 
 import org.antlr.v4.runtime.CharStream;
 import static org.antlr.v4.runtime.IntStream.UNKNOWN_SOURCE_NAME;
@@ -24,10 +24,11 @@ import org.antlr.v4.runtime.misc.Interval;
 import org.netbeans.spi.lexer.*;
 
 /**
+ * An ANTLR4 CharSteam implementation over NetBeans LexerInput.
  *
- * @author lkishalmi
+ * @author Laszlo Kishalmi
  */
-public class LexerInputCharStream implements CharStream {
+final class LexerInputCharStream implements CharStream {
     private final LexerInput input;
 
     private int tokenMark = Integer.MAX_VALUE;
