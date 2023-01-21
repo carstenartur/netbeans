@@ -486,6 +486,7 @@ public class SourceUtils {
      *
      * @deprecated use {@link getFile(ElementHandle, ClasspathInfo)}
      */
+    @Deprecated
     public static FileObject getFile (Element element, final ClasspathInfo cpInfo) {
         Parameters.notNull("element", element); //NOI18N
         Parameters.notNull("cpInfo", cpInfo);   //NOI18N
@@ -683,7 +684,7 @@ public class SourceUtils {
         }
 
         final boolean apply(final FileObject fo) {
-            if (name.equals(fo.getNameExt())) {
+            if (fo.getNameExt().equals(name)) {
                 return true;
             }
             final String foName = fo.getName();
@@ -793,6 +794,7 @@ public class SourceUtils {
      * @throws InterruptedException is thrown when the waiting thread is interrupted.
      * @deprecated use {@link JavaSource#runWhenScanFinished}
      */
+    @Deprecated
     public static void waitScanFinished () throws InterruptedException {
         try {
             class T extends UserTask implements ClasspathInfoProvider {
