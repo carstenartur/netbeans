@@ -1033,7 +1033,7 @@ function doActivateWithJDK(specifiedJDK: string | null, context: ExtensionContex
         }
 
         async decorateTreeItem(vis : Visualizer, item : vscode.TreeItem) : Promise<vscode.TreeItem> {
-            if (!(item.contextValue && item.contextValue.match(/class:ddl.DBConnection/))) {
+            if (!(item.contextValue && item.contextValue.match(/class:org.netbeans.api.db.explorer.DatabaseConnection/))) {
                 return item;
             }
             return vscode.commands.executeCommand('java.db.preferred.connection').then((id) => {
@@ -1072,13 +1072,14 @@ function doActivateWithJDK(specifiedJDK: string | null, context: ExtensionContex
         let tv : vscode.TreeView<Visualizer> = await ts.createView('foundProjects', 'Projects', { canSelectMany : false });
 
         async function revealActiveEditor(ed? : vscode.TextEditor) {
-            if (!window.activeTextEditor?.document?.uri) {
+            const uri = window.activeTextEditor?.document?.uri;
+            if (!uri || uri.scheme.toLowerCase() !== 'file') {
                 return;
             }
             if (!tv.visible) {
                 return;
             }
-            let vis : Visualizer | undefined = await ts.findPath(tv, window.activeTextEditor?.document?.uri?.toString());
+            let vis : Visualizer | undefined = await ts.findPath(tv, uri.toString());
             if (!vis) {
                 return;
             }
