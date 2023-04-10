@@ -185,6 +185,14 @@ public class ASTPHP5ParserTest extends ParserTestBase {
         performTest("parser/nowdoc_015");
     }
 
+    public void testIssueGH4345_01() throws Exception {
+        performTest("parser/issueGH4345_01");
+    }
+
+    public void testIssueGH4345_02() throws Exception {
+        performTest("parser/issueGH4345_02");
+    }
+
     public void testHereDoc_01() throws Exception {
         performTest("parser/heredoc00");
     }
@@ -1491,6 +1499,14 @@ public class ASTPHP5ParserTest extends ParserTestBase {
 
     public void testDnfTypes_01() throws Exception {
         performTest("parser/php82/dnfTypes_01");
+    }
+
+    public void testIssueGH5585_01() throws Exception {
+        performTest("parser/issueGH5585_01");
+    }
+
+    public void testIssueGH5585_02() throws Exception {
+        performTest("parser/issueGH5585_02");
     }
 
     @Override

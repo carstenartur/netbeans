@@ -1967,7 +1967,6 @@ loop:
      * Verify destructuring variable declaration binding pattern and extract bound variable declarations.
      */
     private void verifyDestructuringBindingPattern(Expression pattern, Consumer<IdentNode> identifierCallback) {
-        assert pattern instanceof ObjectNode || pattern instanceof ArrayLiteralNode;
         pattern.accept(new VerifyDestructuringPatternNodeVisitor(new LexicalContext()) {
             @Override
             protected void verifySpreadElement(Expression lvalue) {
@@ -5896,7 +5895,7 @@ loop:
                     }
                     break;
                 case LBRACE:
-                    if (T(k + 1) == TokenType.RBRACE) {
+                    if (! lookaheadIsJsxAssignment()) {
                         next();
                         next();
                     } else {
@@ -5910,6 +5909,19 @@ loop:
             }
         }
         return new JsxElementNode(name, attributes, children, realStart, finish);
+    }
+
+    private boolean lookaheadIsJsxAssignment() {
+        assert type == LBRACE;
+        for (int i = 1;; i++) {
+            TokenType t = T(k + i);
+            switch (t) {
+            case COMMENT:
+                continue;
+            default:
+                return t != TokenType.RBRACE;
+            }
+        }
     }
 
     private Expression jsxAttribute() {
@@ -5958,6 +5970,9 @@ loop:
     }
 
     private String jsxElementName() {
+        if (type == TokenType.JSX_ELEM_END) {
+            return "";
+        }
         expectDontAdvance(TokenType.JSX_IDENTIFIER);
         StringBuilder name = new StringBuilder((String) getValue(token));
         next();

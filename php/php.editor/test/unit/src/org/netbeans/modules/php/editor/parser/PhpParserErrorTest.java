@@ -236,6 +236,14 @@ public class PhpParserErrorTest extends PHPTestBase {
         checkErrors("testfiles/parser/nowdoc_06.php");
     }
 
+    public void testIssueGH4345_01() throws Exception {
+        checkErrors("testfiles/parser/issueGH4345_01.php");
+    }
+
+    public void testIssueGH4345_02() throws Exception {
+        checkErrors("testfiles/parser/issueGH4345_02.php");
+    }
+
     // HEREDOC
     public void testNetBeans1563_01() throws Exception {
         checkErrors("testfiles/parser/netbeans1563_01.php");
@@ -1417,6 +1425,14 @@ public class PhpParserErrorTest extends PHPTestBase {
 
     public void testDnfTypes_01() throws Exception {
         checkErrors("testfiles/parser/php82/dnfTypes_01.php");
+    }
+
+    public void testIssueGH5585_01() throws Exception {
+        checkErrors("testfiles/parser/issueGH5585_01.php");
+    }
+
+    public void testIssueGH5585_02() throws Exception {
+        checkErrors("testfiles/parser/issueGH5585_02.php");
     }
 
 }
