@@ -97,7 +97,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        java: [ '11', '17', '20-ea' ]
+        java: [ '11', '17', '21-ea' ]
       fail-fast: false
     steps:
         
@@ -121,7 +121,7 @@ jobs:
           restore-keys: ${{ runner.os }}-
 
       - name: Setup Gradle Daemon to run on JDK 11
-        if: ${{ matrix.java == '20-ea' }}
+        if: ${{ matrix.java == '21-ea' }}
         run: |
           mkdir -p ~/.gradle
           #uses a preinstalled JDK 11 from the runner
@@ -193,7 +193,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        java: [ '8', '11', '17', '20-ea' ]
+        java: [ '11', '17', '21-ea' ]
       fail-fast: false
     steps:
 
@@ -544,6 +544,9 @@ jobs:
       - name: ide/javascript2.debug
         run: ant $OPTS -f ide/javascript2.debug test
 
+      - name: ide/languages.hcl
+        run: ant $OPTS -f ide/languages.hcl test
+
       - name: ide/languages.toml
         run: ant $OPTS -f ide/languages.toml test
 
@@ -784,7 +787,10 @@ jobs:
 
       - name: java/api.maven
         run: ant $OPTS -f java/api.maven test
-        
+
+      - name: maven.apisupport
+        run: ant $OPTS -f apisupport/maven.apisupport test
+
       - name: java/hudson.maven
         run: ant $OPTS -f java/hudson.maven test
 
@@ -1183,7 +1189,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        java: [ '8' ]
+        java: [ '11' ]
     steps:
 
       - name: Set up JDK ${{ matrix.java }}
@@ -1271,9 +1277,6 @@ jobs:
       - name: Extract
         run: tar --zstd -xf build.tar.zst
 
-      - name: api.debugger.jpda
-        run: ant $OPTS -f java/api.debugger.jpda test
-
       - name: api.java
         run: ant $OPTS -f java/api.java test
 
@@ -1285,24 +1288,6 @@ jobs:
 
       - name: dbschema
         run: ant $OPTS -f java/dbschema test -Dtest.config=stable
-
-#      - name: debugger.jpda
-#        run: ant $OPTS -f java/debugger.jpda test
-
-      - name: debugger.jpda.js
-        run: ant $OPTS -f java/debugger.jpda.js test
-
-      - name: debugger.jpda.projects
-        run: ant $OPTS -f java/debugger.jpda.projects test
-
-      - name: debugger.jpda.projectsui
-        run: ant $OPTS -f java/debugger.jpda.projectsui test
-
-#      - name: debugger.jpda.truffle
-#        run: ant $OPTS -f java/debugger.jpda.truffle test
-
-#      - name: debugger.jpda.ui
-#        run: ant $OPTS -f java/debugger.jpda.ui test
 
       - name: editor.htmlui
         run: ant $OPTS -f java/editor.htmlui test
@@ -1485,9 +1470,6 @@ jobs:
       - name: apisupport.wizards
         run: ant $OPTS -f apisupport/apisupport.wizards test
 
-      - name: maven.apisupport
-        run: ant $OPTS -f apisupport/maven.apisupport test
-
       - name: timers
         run: ant $OPTS -f apisupport/timers test -Dtest.config=stable
 
@@ -1541,6 +1523,66 @@ jobs:
       - name: spi.java.hints
         if: ${{ (matrix.config == 'batch2') && success() }}
         run: ant $OPTS -f java/spi.java.hints test
+
+      - name: Create Test Summary
+        uses: test-summary/action@v2
+        if: failure()
+        with:
+          paths: "./*/*/build/test/*/results/TEST-*.xml"
+
+
+  java-debugger-test:
+    name: Java Debugger tests on Linux/JDK ${{ matrix.java }}
+    # equals env.test_java == 'true'
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'Java') || contains(github.event.pull_request.labels.*.name, 'ci:all-tests') || github.event_name != 'pull_request' }}
+    needs: base-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        java: [ '11', '17' ]
+      fail-fast: false
+    steps:
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: ${{ env.default_java_distribution }}
+
+      - name: Setup Xvfb
+        run: |
+          echo "DISPLAY=:99.0" >> $GITHUB_ENV
+          Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+
+      - name: Download Build
+        uses: actions/download-artifact@v3
+        with:
+          name: build
+
+      - name: Extract
+        run: tar --zstd -xf build.tar.zst
+
+      - name: api.debugger.jpda
+        run: ant $OPTS -f java/api.debugger.jpda test
+
+      - name: debugger.jpda
+        run: .github/retry.sh ant $OPTS -f java/debugger.jpda test
+
+      - name: debugger.jpda.js
+        run: ant $OPTS -f java/debugger.jpda.js test
+
+      - name: debugger.jpda.projects
+        run: ant $OPTS -f java/debugger.jpda.projects test
+
+      - name: debugger.jpda.projectsui
+        run: ant $OPTS -f java/debugger.jpda.projectsui test
+
+#      - name: debugger.jpda.truffle
+#        run: ant $OPTS -f java/debugger.jpda.truffle test
+
+#      - name: debugger.jpda.ui
+#        run: ant $OPTS -f java/debugger.jpda.ui test
 
       - name: Create Test Summary
         uses: test-summary/action@v2
@@ -2244,7 +2286,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        java: [ '8' ]
+        java: [ '11' ]
 
     steps:
       - name: Set up JDK ${{ matrix.java }} 
@@ -2352,7 +2394,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        java: [ '8' ]
+        java: [ '11' ]
 
     steps:
       - name: Set up JDK ${{ matrix.java }}
@@ -2405,6 +2447,7 @@ jobs:
       - harness-modules-test
       - java-modules-test
       - java-hints-test
+      - java-debugger-test
       - profiler-test
       - apisupport-modules-test
       - build-tools
