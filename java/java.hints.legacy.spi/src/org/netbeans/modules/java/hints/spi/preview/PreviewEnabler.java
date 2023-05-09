@@ -16,15 +16,23 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.netbeans.modules.maven.indexer.spi.impl;
+package org.netbeans.modules.java.hints.spi.preview;
 
-import org.netbeans.modules.maven.indexer.api.RepositoryInfo;
+import org.openide.filesystems.FileObject;
 
 /**
- * used internally.
- * @author Tomas Stupka
+ *
  */
-public interface IndexingNotificationProvider {
-    public void notifyError(String message);
-    public void requestPermissionsFor(RepositoryInfo repo);
+public interface PreviewEnabler {
+
+    public void enablePreview(String newSourceLevel) throws Exception;
+
+    public default boolean canChangeSourceLevel() {
+        return true;
+    }
+
+    public static interface Factory {
+        public PreviewEnabler enablerFor(FileObject file);
+    }
+
 }
