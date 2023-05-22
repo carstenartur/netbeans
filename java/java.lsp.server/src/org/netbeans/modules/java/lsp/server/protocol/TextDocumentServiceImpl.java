@@ -1510,9 +1510,14 @@ public class TextDocumentServiceImpl implements TextDocumentService, LanguageCli
                     public FoldingRange createInnerClassFold(int start, int end) {
                         return createFold(start, end, FoldingRangeKind.Region);
                     }
-
+                    
                     @Override
                     public FoldingRange createCodeBlockFold(int start, int end) {
+                        return createFold(start, end, FoldingRangeKind.Region);
+                    }
+                    
+                    @Override
+                    public FoldingRange createMethodFold(int start, int end) {
                         return createFold(start, end, FoldingRangeKind.Region);
                     }
 
@@ -1937,7 +1942,7 @@ public class TextDocumentServiceImpl implements TextDocumentService, LanguageCli
             }
             missingFileDiscovered(uri);
         } catch (MalformedURLException ex) {
-            if (!uri.startsWith("untitled:")) {
+            if (!uri.startsWith("untitled:") && !uri.startsWith("jdt:")) {
                 LOG.log(Level.WARNING, "Invalid file URL: " + uri, ex);
             }
         }
