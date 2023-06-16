@@ -67,6 +67,7 @@ import org.eclipse.lsp4j.RenameOptions;
 import org.eclipse.lsp4j.SemanticTokensCapabilities;
 import org.eclipse.lsp4j.SemanticTokensParams;
 import org.eclipse.lsp4j.ServerCapabilities;
+import org.eclipse.lsp4j.SetTraceParams;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
@@ -436,6 +437,8 @@ public final class Server {
                 return CompletableFuture.completedFuture(new Project[0]);
             }
             CompletableFuture<Project[]> f = new CompletableFuture<>();
+            LOG.log(Level.FINER, "Asked to open project(s): {0}", Arrays.asList(projectCandidates));
+            LOG.log(Level.FINER, "Caller:", new Throwable());
             SERVER_INIT_RP.post(() -> {
                 asyncOpenSelectedProjects0(f, projectCandidates, addWorkspace, false);
             });
@@ -611,7 +614,7 @@ public final class Server {
             List<Project> toOpen = new ArrayList<>();
             Map<Project, CompletableFuture<Void>> local = new HashMap<>();
             synchronized (this) {
-                LOG.log(Level.FINER, "{0}: Asked to open project(s): {1}", new Object[]{ id, Arrays.asList(projects) });
+                LOG.log(Level.FINER, "{0}: Opening project(s): {1}", new Object[]{ id, Arrays.asList(projects) });
                 for (Project p : projects) {
                     CompletableFuture<Void> pending = beingOpened.get(p);
                     if (pending != null) {
@@ -623,7 +626,7 @@ public final class Server {
                 }
                 beingOpened.putAll(local);
             }
-
+            long t = System.currentTimeMillis();
             LOG.log(Level.FINER, id + ": Opening projects: {0}", Arrays.asList(toOpen));
 
             // before the projects are officialy 'opened', try to prime the projects
@@ -700,6 +703,7 @@ public final class Server {
                     }
                 }
                 f.complete(prjsRequested);
+                LOG.log(Level.INFO, "{0} projects opened in {1}ms", new Object[] { prjsRequested.length, (System.currentTimeMillis() - t) });
             }).exceptionally(e -> {
                 f.completeExceptionally(e);
                 return null;
@@ -957,6 +961,12 @@ public final class Server {
             ((LanguageClientAware) getTextDocumentService()).connect(client);
             ((LanguageClientAware) getWorkspaceService()).connect(client);
             ((LanguageClientAware) treeService).connect(client);
+        }
+
+        @Override
+        public void setTrace(SetTraceParams params) {
+            // no op: there's already a lot of noise in the log, and the console log
+            // can be controlled by a commandline parameter to the NBLS.
         }
     }
 
