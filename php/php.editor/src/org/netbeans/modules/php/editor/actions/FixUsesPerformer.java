@@ -19,6 +19,7 @@
 package org.netbeans.modules.php.editor.actions;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -65,8 +66,8 @@ import org.netbeans.modules.php.editor.parser.astnodes.Program;
 import org.netbeans.modules.php.editor.parser.astnodes.UseStatement;
 import org.netbeans.modules.php.editor.parser.astnodes.visitors.DefaultVisitor;
 import org.openide.awt.StatusDisplayer;
-import org.openide.util.Exceptions;
 import org.openide.util.NbBundle;
+import org.openide.util.Pair;
 
 /**
  *
@@ -88,6 +89,8 @@ public class FixUsesPerformer {
     private static final char COMMA = ','; //NOI18N
     private static final char CURLY_OPEN = '{'; //NOI18N
     private static final char CURLY_CLOSE = '}'; //NOI18N
+    private static final Map<UsePart.Type, Integer> PSR12_TYPE_PRIORITIES = new HashMap<>();
+    private static final Map<UsePart.Type, Integer> DEFAULT_TYPE_PRIORITIES = new HashMap<>();
     private final PHPParseResult parserResult;
     private final ImportData importData;
     private final List<ItemVariant> selections;
@@ -95,6 +98,15 @@ public class FixUsesPerformer {
     private final Options options;
     private EditList editList;
     private BaseDocument baseDocument;
+
+    static {
+        DEFAULT_TYPE_PRIORITIES.put(UsePart.Type.TYPE, 0);
+        DEFAULT_TYPE_PRIORITIES.put(UsePart.Type.CONST, 1);
+        DEFAULT_TYPE_PRIORITIES.put(UsePart.Type.FUNCTION, 2);
+        PSR12_TYPE_PRIORITIES.put(UsePart.Type.TYPE, 0);
+        PSR12_TYPE_PRIORITIES.put(UsePart.Type.FUNCTION, 1);
+        PSR12_TYPE_PRIORITIES.put(UsePart.Type.CONST, 2);
+    }
 
     public FixUsesPerformer(
             final PHPParseResult parserResult,
@@ -126,7 +138,12 @@ public class FixUsesPerformer {
                 : "The selections size must not be larger than the dataItems size. selections size: " + selections.size() + " > dataItems size: " + dataItems.size(); // NOI18N
         NamespaceScope namespaceScope = ModelUtils.getNamespaceScope(parserResult, importData.caretPosition);
         assert namespaceScope != null;
-        int startOffset = getOffset(baseDocument, namespaceScope, parserResult, importData.caretPosition);
+        CheckVisitor checkVisitor = new CheckVisitor();
+        Program program = parserResult.getProgram();
+        if (program != null) {
+            program.accept(checkVisitor);
+        }
+        int startOffset = getOffset(namespaceScope, importData.caretPosition, checkVisitor);
         List<UsePart> useParts = new ArrayList<>();
         Collection<? extends GroupUseScope> declaredGroupUses = namespaceScope.getDeclaredGroupUses();
         for (GroupUseScope groupUseElement : declaredGroupUses) {
@@ -155,16 +172,12 @@ public class FixUsesPerformer {
             }
         }
         replaceUnimportedItems();
-        String insertString = createInsertString(useParts);
-        insertUses(startOffset, insertString);
+        Map<UsePart.Type, Integer> typePriorities = getTypeOrderPriorities(useParts, checkVisitor.getExistingTypeOrderPriorities());
+        String insertString = createInsertString(useParts, typePriorities);
+        insertUses(startOffset, insertString, checkVisitor);
     }
 
-    private void insertUses(int startOffset, String insertString) {
-        ExistingUseStatementVisitor visitor = new ExistingUseStatementVisitor();
-        Program program = parserResult.getProgram();
-        if (program != null) {
-            program.accept(visitor);
-        }
+    private void insertUses(int startOffset, String insertString, CheckVisitor visitor) {
         List<OffsetRange> usedRanges = visitor.getUsedRanges();
         String existingUses = getExistingUses(usedRanges);
         // avoid being recognized as a modified file
@@ -264,9 +277,9 @@ public class FixUsesPerformer {
         return result;
     }
 
-    private String createInsertString(final List<UsePart> useParts) {
+    private String createInsertString(final List<UsePart> useParts, final Map<UsePart.Type, Integer> typeOrderPriorities) {
         StringBuilder insertString = new StringBuilder();
-        sort(useParts);
+        sort(useParts, typeOrderPriorities);
         if (!useParts.isEmpty()) {
             insertString.append(NEW_LINE);
         }
@@ -279,7 +292,7 @@ public class FixUsesPerformer {
 
         if (options.preferGroupUses()
                 && options.getPhpVersion().compareTo(PhpVersion.PHP_70) >= 0) {
-            insertString.append(createStringForGroupUse(useParts, indentString));
+            insertString.append(createStringForGroupUse(useParts, indentString, typeOrderPriorities));
         } else if (options.preferMultipleUseStatementsCombined()) {
             insertString.append(createStringForMultipleUse(useParts, indentString));
         } else {
@@ -288,37 +301,35 @@ public class FixUsesPerformer {
         return insertString.toString();
     }
 
-    private void sort(List<UsePart> useParts) {
-        if (options.putInPSR12Order()) {
-            Collections.sort(useParts, (u1, u2) -> {
-                int result = 0;
-                if (UsePart.Type.TYPE.equals(u1.getType()) && UsePart.Type.TYPE.equals(u2.getType())) {
-                    result = 0;
-                } else if (UsePart.Type.TYPE.equals(u1.getType()) && UsePart.Type.CONST.equals(u2.getType())) {
-                    result = -1;
-                } else if (UsePart.Type.TYPE.equals(u1.getType()) && UsePart.Type.FUNCTION.equals(u2.getType())) {
-                    result = -1;
-                } else if (UsePart.Type.CONST.equals(u1.getType()) && UsePart.Type.TYPE.equals(u2.getType())) {
-                    result = 1;
-                } else if (UsePart.Type.CONST.equals(u1.getType()) && UsePart.Type.CONST.equals(u2.getType())) {
-                    result = 0;
-                } else if (UsePart.Type.CONST.equals(u1.getType()) && UsePart.Type.FUNCTION.equals(u2.getType())) {
-                    result = 1;
-                } else if (UsePart.Type.FUNCTION.equals(u1.getType()) && UsePart.Type.TYPE.equals(u2.getType())) {
-                    result = 1;
-                } else if (UsePart.Type.FUNCTION.equals(u1.getType()) && UsePart.Type.CONST.equals(u2.getType())) {
-                    result = -1;
-                } else if (UsePart.Type.FUNCTION.equals(u1.getType()) && UsePart.Type.FUNCTION.equals(u2.getType())) {
-                    result = 0;
-                }
-                return result == 0 ? u1.getTextPart().compareToIgnoreCase(u2.getTextPart()) : result;
-            });
-        } else {
-            Collections.sort(useParts);
+    private Map<UsePart.Type, Integer> getTypeOrderPriorities(List<UsePart> useParts, Map<UsePart.Type, Integer> existingTypeOrderPriorities) {
+        boolean useExistingOrder = true;
+        for (UsePart usePart : useParts) {
+            if (existingTypeOrderPriorities.get(usePart.getType()) == null) {
+                useExistingOrder = false;
+                break;
+            }
         }
+        if (options.keepExistingUseTypeOrder() && useExistingOrder) {
+            return existingTypeOrderPriorities;
+        } else if (options.putInPSR12Order()) {
+            return Collections.unmodifiableMap(PSR12_TYPE_PRIORITIES);
+        }
+        return Collections.unmodifiableMap(DEFAULT_TYPE_PRIORITIES);
     }
 
-    private String createStringForGroupUse(List<UsePart> useParts, String indentString) {
+    private void sort(List<UsePart> useParts, final Map<UsePart.Type, Integer> typePriorities) {
+        Collections.sort(useParts, (u1, u2) -> {
+            int result = 0;
+            Integer p1 = typePriorities.get(u1.getType());
+            Integer p2 = typePriorities.get(u2.getType());
+            if (p1 != null && p2 != null) {
+                result = Integer.compare(p1, p2);
+            }
+            return result == 0 ? u1.getTextPart().compareToIgnoreCase(u2.getTextPart()) : result;
+        });
+    }
+
+    private String createStringForGroupUse(List<UsePart> useParts, String indentString, Map<UsePart.Type, Integer> typePriorities) {
         List<UsePart> typeUseParts = new ArrayList<>(useParts.size());
         List<UsePart> constUseParts = new ArrayList<>(useParts.size());
         List<UsePart> functionUseParts = new ArrayList<>(useParts.size());
@@ -342,7 +353,7 @@ public class FixUsesPerformer {
         groupUseParts.put(USE_PREFIX, typeUseParts);
         groupUseParts.put(USE_CONST_PREFIX, constUseParts);
         groupUseParts.put(USE_FUNCTION_PREFIX, functionUseParts);
-        createStringForGroupUse(insertString, indentString, groupUseParts);
+        createStringForGroupUse(insertString, indentString, groupUseParts, typePriorities);
         return insertString.toString();
     }
 
@@ -352,38 +363,51 @@ public class FixUsesPerformer {
                 .collect(Collectors.toList());
     }
 
-    private void createStringForGroupUse(StringBuilder insertString, String indentString, Map<String, List<UsePart>> useParts) {
-        if (options.putInPSR12Order()) {
-            createStringForGroupUsePSR12(insertString, indentString, useParts);
-        } else {
-            createStringForGroupUseDefault(insertString, indentString, useParts);
+    private void createStringForGroupUse(StringBuilder insertString, String indentString, Map<String, List<UsePart>> useParts, Map<UsePart.Type, Integer> typePriorities) {
+        createStringForGroupUse(getOrderedUseTypePrefixes(typePriorities), useParts, insertString, indentString);
+    }
+
+    private List<String> getOrderedUseTypePrefixes(Map<UsePart.Type, Integer> typePriorities) {
+        String[] priorities = new String[typePriorities.size()];
+        for (Map.Entry<UsePart.Type, Integer> entry : typePriorities.entrySet()) {
+            Integer position = entry.getValue();
+            priorities[position] =  getUseTypePrefix(entry.getKey());
+        }
+        return Arrays.asList(priorities);
+    }
+
+    private String getUseTypePrefix(UsePart.Type type) {
+        switch (type) {
+            case TYPE:
+                return USE_PREFIX;
+            case FUNCTION:
+                return USE_FUNCTION_PREFIX;
+            case CONST:
+                return USE_CONST_PREFIX;
+            default:
+                assert false : "Unkown type: " + type; // NOI18N
+                return USE_PREFIX;
         }
     }
 
-    private void createStringForGroupUsePSR12(StringBuilder insertString, String indentString, Map<String, List<UsePart>> useParts) {
-        // types
-        createStringForGroupUse(insertString, indentString, USE_PREFIX, useParts.get(USE_PREFIX));
-
-        // functions
-        if (!useParts.get(USE_FUNCTION_PREFIX).isEmpty()) {
-            appendNewLine(insertString);
+    private void createStringForGroupUse(List<String> orderedUseTypePrefixes, Map<String, List<UsePart>> useParts, StringBuilder insertString, String indentString) {
+        for (String useType : orderedUseTypePrefixes) {
+            createStringForGroupUse(Pair.of(useType, useParts), insertString, indentString);
         }
-        createStringForGroupUse(insertString, indentString, USE_FUNCTION_PREFIX, useParts.get(USE_FUNCTION_PREFIX));
-
-        // constants
-        if (!useParts.get(USE_CONST_PREFIX).isEmpty()) {
-            appendNewLine(insertString);
-        }
-        createStringForGroupUse(insertString, indentString, USE_CONST_PREFIX, useParts.get(USE_CONST_PREFIX));
     }
 
-    private void createStringForGroupUseDefault(StringBuilder insertString, String indentString, Map<String, List<UsePart>> useParts) {
-        // types
-        createStringForGroupUse(insertString, indentString, USE_PREFIX, useParts.get(USE_PREFIX));
-        // constants
-        createStringForGroupUse(insertString, indentString, USE_CONST_PREFIX, useParts.get(USE_CONST_PREFIX));
-        // functions
-        createStringForGroupUse(insertString, indentString, USE_FUNCTION_PREFIX, useParts.get(USE_FUNCTION_PREFIX));
+    private void createStringForGroupUse(Pair<String, Map<String, List<UsePart>>> useParts, StringBuilder insertString, String indentString) {
+        String useType = useParts.first();
+        if (!useParts.second().get(useType).isEmpty()) {
+            appendNewLineBetweenUseTypes(insertString);
+        }
+        createStringForGroupUse(insertString, indentString, useType, useParts.second().get(useType));
+    }
+
+    private void appendNewLineBetweenUseTypes(StringBuilder insertString) {
+        for (int i = 0; i < options.getBlankLinesBetweenUseTypes(); i++) {
+            appendNewLine(insertString);
+        }
     }
 
     private void appendNewLine(StringBuilder insertString) {
@@ -466,6 +490,7 @@ public class FixUsesPerformer {
                     insertString.append(COMMA).append(NEW_LINE).append(indentString);
                 } else {
                     insertString.append(SEMICOLON);
+                    appendNewLineBetweenUseTypes(insertString);
                 }
             }
             if (lastUsePartType != usePart.getType()) {
@@ -496,8 +521,8 @@ public class FixUsesPerformer {
         StringBuilder result = new StringBuilder();
         UsePart.Type lastUseType = null;
         for (UsePart usePart : useParts) {
-            if (options.putInPSR12Order() && lastUseType != null && lastUseType != usePart.getType()) {
-                appendNewLine(result);
+            if (lastUseType != null && lastUseType != usePart.getType()) {
+                appendNewLineBetweenUseTypes(result);
             }
             result.append(usePart.getUsePrefix()).append(usePart.getTextPart()).append(SEMICOLON);
             lastUseType = usePart.getType();
@@ -543,7 +568,7 @@ public class FixUsesPerformer {
         return result;
     }
 
-    private static int getOffset(BaseDocument baseDocument, NamespaceScope namespaceScope, PHPParseResult parserResult, int caretPosition) {
+    private int getOffset(NamespaceScope namespaceScope, int caretPosition, CheckVisitor checkVisitor) {
         try {
             ModelElement lastSingleUse = getLastUse(namespaceScope, false);
             ModelElement lastGroupUse = getLastUse(namespaceScope, true);
@@ -581,8 +606,6 @@ public class FixUsesPerformer {
                 //      ?>
                 offset = Integer.max(offset, getFirstPhpTagPosition(parserResult, namespaceScope));
             }
-            CheckVisitor checkVisitor = new CheckVisitor();
-            parserResult.getProgram().accept(checkVisitor);
             if (namespaceScope.isDefaultNamespace()) {
                 List<NamespaceDeclaration> globalNamespaceDeclarations = checkVisitor.getGlobalNamespaceDeclarations();
                 if (!globalNamespaceDeclarations.isEmpty()) {
@@ -697,8 +720,10 @@ public class FixUsesPerformer {
     //~ inner classes
     private static class CheckVisitor extends DefaultVisitor {
 
-        private List<DeclareStatement> declareStatements = new ArrayList<>();
-        private List<NamespaceDeclaration> globalNamespaceDeclarations = new ArrayList<>();
+        private final List<DeclareStatement> declareStatements = new ArrayList<>();
+        private final List<NamespaceDeclaration> globalNamespaceDeclarations = new ArrayList<>();
+        private final List<OffsetRange> usedRanges = new LinkedList<>();
+        private final Map<UsePart.Type, Integer> existingTypeOrderPriorities = new HashMap<>();
 
         public List<DeclareStatement> getDeclareStatements() {
             return Collections.unmodifiableList(declareStatements);
@@ -706,6 +731,14 @@ public class FixUsesPerformer {
 
         public List<NamespaceDeclaration> getGlobalNamespaceDeclarations() {
             return Collections.unmodifiableList(globalNamespaceDeclarations);
+        }
+
+        public List<OffsetRange> getUsedRanges() {
+            return Collections.unmodifiableList(usedRanges);
+        }
+
+        public Map<UsePart.Type, Integer> getExistingTypeOrderPriorities() {
+            return Collections.unmodifiableMap(existingTypeOrderPriorities);
         }
 
         @Override
@@ -726,6 +759,20 @@ public class FixUsesPerformer {
                 globalNamespaceDeclarations.add(declaration);
             }
             super.visit(declaration);
+        }
+
+        @Override
+        public void visit(UseStatement node) {
+            if (CancelSupport.getDefault().isCancelled()) {
+                return;
+            }
+            usedRanges.add(new OffsetRange(node.getStartOffset(), node.getEndOffset()));
+            UsePart.Type usePartType = UsePart.Type.create(node.getType());
+            Integer priority = existingTypeOrderPriorities.get(usePartType);
+            if (priority == null) {
+                existingTypeOrderPriorities.put(usePartType, existingTypeOrderPriorities.size());
+            }
+            super.visit(node);
         }
     }
 
@@ -864,20 +911,6 @@ public class FixUsesPerformer {
         }
     }
 
-    private static class ExistingUseStatementVisitor extends DefaultVisitor {
-
-        private final List<OffsetRange> usedRanges = new LinkedList<>();
-
-        public List<OffsetRange> getUsedRanges() {
-            return Collections.unmodifiableList(usedRanges);
-        }
-
-        @Override
-        public void visit(UseStatement node) {
-            usedRanges.add(new OffsetRange(node.getStartOffset(), node.getEndOffset()));
-        }
-    }
-
     private static class UsePart implements Comparable<UsePart> {
 
         enum Type {
@@ -939,6 +972,25 @@ public class FixUsesPerformer {
                         result = TYPE;
                 }
                 return result;
+            }
+
+            static Type create(UseStatement.Type type) {
+                Type usePartType = TYPE;
+                switch (type) {
+                    case TYPE:
+                        usePartType = TYPE;
+                        break;
+                    case FUNCTION:
+                        usePartType = FUNCTION;
+                        break;
+                    case CONST:
+                        usePartType = CONST;
+                        break;
+                    default:
+                        assert false : "Unknown Type: " + type; // NOI18N
+                        break;
+                }
+                return usePartType;
             }
         }
 

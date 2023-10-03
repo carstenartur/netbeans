@@ -283,6 +283,8 @@ public class FixUsesAction extends BaseAction {
         private final boolean startUseWithNamespaceSeparator;
         private final boolean aliasesCapitalsOfNamespaces;
         private final boolean putInPSR12Order;
+        private final boolean keepExistingUseTypeOrder;
+        private final int blankLinesBetweenUseTypes;
         private final PhpVersion phpVersion;
 
         public static class Builder {
@@ -293,6 +295,8 @@ public class FixUsesAction extends BaseAction {
             private boolean startUseWithNamespaceSeparator = false;
             private boolean aliasesCapitalsOfNamespaces = false;
             private boolean putInPSR12Order = false;
+            private boolean keepExistingUseTypeOrder = false;
+            private int blankLinesBetweenUseTypes = 0;
             private final PhpVersion phpVersion;
 
             public Builder(PhpVersion phpVersion) {
@@ -329,6 +333,16 @@ public class FixUsesAction extends BaseAction {
                 return this;
             }
 
+            public Builder keepExistingUseTypeOrder(boolean keepExistingUseTypeOrder) {
+                this.keepExistingUseTypeOrder = keepExistingUseTypeOrder;
+                return this;
+            }
+
+            public Builder setBlankLinesBetweenUseTypes(int blankLinesBetweenUseTypes) {
+                this.blankLinesBetweenUseTypes = blankLinesBetweenUseTypes;
+                return this;
+            }
+
             public Options build() {
                 return new Options(this);
             }
@@ -341,6 +355,8 @@ public class FixUsesAction extends BaseAction {
             this.startUseWithNamespaceSeparator = builder.startUseWithNamespaceSeparator;
             this.aliasesCapitalsOfNamespaces = builder.aliasesCapitalsOfNamespaces;
             this.putInPSR12Order = builder.putInPSR12Order;
+            this.keepExistingUseTypeOrder = builder.keepExistingUseTypeOrder;
+            this.blankLinesBetweenUseTypes = builder.blankLinesBetweenUseTypes;
             this.phpVersion = builder.phpVersion;
         }
 
@@ -352,6 +368,8 @@ public class FixUsesAction extends BaseAction {
                 boolean startUseWithNamespaceSeparator,
                 boolean aliasesCapitalsOfNamespaces,
                 boolean putInPSR12Order,
+                boolean keepExistingUseTypeOrder,
+                int blankLinesBetweenUseTypes,
                 PhpVersion phpVersion) {
             this.preferFullyQualifiedNames = preferFullyQualifiedNames;
             this.preferMultipleUseStatementsCombined = preferMultipleUseStatementsCombined;
@@ -359,6 +377,8 @@ public class FixUsesAction extends BaseAction {
             this.startUseWithNamespaceSeparator = startUseWithNamespaceSeparator;
             this.aliasesCapitalsOfNamespaces = aliasesCapitalsOfNamespaces;
             this.putInPSR12Order = putInPSR12Order;
+            this.keepExistingUseTypeOrder = keepExistingUseTypeOrder;
+            this.blankLinesBetweenUseTypes = blankLinesBetweenUseTypes;
             this.phpVersion = phpVersion;
         }
 
@@ -369,7 +389,7 @@ public class FixUsesAction extends BaseAction {
                 boolean startUseWithNamespaceSeparator,
                 boolean aliasesCapitalsOfNamespaces,
                 PhpVersion phpVersion) {
-            this(preferFullyQualifiedNames, preferMultipleUseStatementsCombined, preferGroupUses, startUseWithNamespaceSeparator, aliasesCapitalsOfNamespaces, false, phpVersion);
+            this(preferFullyQualifiedNames, preferMultipleUseStatementsCombined, preferGroupUses, startUseWithNamespaceSeparator, aliasesCapitalsOfNamespaces, false, false, 0, phpVersion);
         }
 
         // legacy, for unit tests
@@ -379,7 +399,7 @@ public class FixUsesAction extends BaseAction {
                 boolean startUseWithNamespaceSeparator,
                 boolean aliasesCapitalsOfNamespaces,
                 boolean isPhp56OrGreater) {
-            this(preferFullyQualifiedNames, preferMultipleUseStatementsCombined, false, startUseWithNamespaceSeparator, aliasesCapitalsOfNamespaces, false,
+            this(preferFullyQualifiedNames, preferMultipleUseStatementsCombined, false, startUseWithNamespaceSeparator, aliasesCapitalsOfNamespaces, false, false, 0,
                     isPhp56OrGreater ? PhpVersion.PHP_56 : PhpVersion.PHP_5);
         }
 
@@ -391,7 +411,7 @@ public class FixUsesAction extends BaseAction {
                 boolean startUseWithNamespaceSeparator,
                 boolean aliasesCapitalsOfNamespaces,
                 boolean isPhp56OrGreater) {
-            this(preferFullyQualifiedNames, preferMultipleUseStatementsCombined, preferGroupUses, startUseWithNamespaceSeparator, aliasesCapitalsOfNamespaces, false,
+            this(preferFullyQualifiedNames, preferMultipleUseStatementsCombined, preferGroupUses, startUseWithNamespaceSeparator, aliasesCapitalsOfNamespaces, false, false, 0,
                     isPhp56OrGreater ? PhpVersion.PHP_56 : PhpVersion.PHP_5);
         }
 
@@ -402,6 +422,8 @@ public class FixUsesAction extends BaseAction {
             this.startUseWithNamespaceSeparator = codeStyle.startUseWithNamespaceSeparator();
             this.aliasesCapitalsOfNamespaces = codeStyle.aliasesFromCapitalsOfNamespaces();
             this.putInPSR12Order = codeStyle.putInPSR12Order();
+            this.keepExistingUseTypeOrder = codeStyle.usesKeepExistingTypeOrder();
+            this.blankLinesBetweenUseTypes = codeStyle.getBlankLinesBetweenUseTypes();
             this.phpVersion = CodeUtils.getPhpVersion(fileObject);
         }
 
@@ -427,6 +449,14 @@ public class FixUsesAction extends BaseAction {
 
         public boolean putInPSR12Order() {
             return putInPSR12Order;
+        }
+
+        public boolean keepExistingUseTypeOrder() {
+            return keepExistingUseTypeOrder;
+        }
+
+        public int getBlankLinesBetweenUseTypes() {
+            return blankLinesBetweenUseTypes;
         }
 
         public PhpVersion getPhpVersion() {

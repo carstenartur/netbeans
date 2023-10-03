@@ -35,6 +35,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.maven.DefaultMaven;
 import org.apache.maven.Maven;
+import org.apache.maven.RepositoryUtils;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.InvalidRepositoryException;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -62,6 +63,7 @@ import org.apache.maven.model.building.ModelBuilder;
 import org.apache.maven.model.building.ModelBuildingException;
 import org.apache.maven.model.building.ModelBuildingRequest;
 import org.apache.maven.model.building.ModelBuildingResult;
+import org.apache.maven.model.resolution.ModelResolver;
 import org.apache.maven.plugin.LegacySupport;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuilder;
@@ -71,6 +73,8 @@ import org.apache.maven.project.ProjectBuildingResult;
 import org.apache.maven.repository.RepositorySystem;
 import org.apache.maven.settings.Mirror;
 import org.apache.maven.settings.Proxy;
+import org.apache.maven.settings.Repository;
+import org.apache.maven.settings.RepositoryPolicy;
 import org.apache.maven.settings.Server;
 import org.apache.maven.settings.Settings;
 import org.apache.maven.settings.building.DefaultSettingsBuildingRequest;
@@ -369,16 +373,45 @@ public final class MavenEmbedder {
      * @param localRepository
      * @throws ArtifactResolutionException
      * @throws ArtifactNotFoundException 
+     * @deprecated the Maven API used swallows certain {@link ArtifactNotFoundException} and does not report properly to the caller. Use {@link #resolveArtifact} instead.
      */
+    @Deprecated
     public void resolve(Artifact sources, List<ArtifactRepository> remoteRepositories, ArtifactRepository localRepository) throws ArtifactResolutionException, ArtifactNotFoundException {
+        setUpLegacySupport();
+        ArtifactResolutionRequest req = new ArtifactResolutionRequest();
+        req.setLocalRepository(localRepository);
+        req.setRemoteRepositories(remoteRepositories);
+        req.setArtifact(sources);
+        req.setOffline(isOffline());
+        ArtifactResolutionResult result = repositorySystem.resolve(req);
+        normalizePath(sources);
+        // XXX check result for exceptions and throw them now?
+        for (Exception ex : result.getExceptions()) {
+            LOG.log(Level.FINE, null, ex);
+        }
+    }
+    
+    /**
+     * Resolves the artifact. Attaches version info according to project's dependency management configuration, resolves to a local file. Throws an exception
+     * on missing on unresolvable artifact, trying to mimic the real build's behaviour. This method supersedes the deprecated {@link #resolve}.
+     * 
+     * @param toResolve artifact to resolve
+     * @param remoteRepositories - these instances need to be properly mirrored and proxied. Either by creating via EmbedderFactory.createRemoteRepository()
+     *              or by using instances from MavenProject
+     * @param localRepository
+     * @throws ArtifactResolutionException if the artifact is not found 
+     * @throws ArtifactNotFoundException if the artifact is not found or is not updated to satisfy the build.
+     * @since 2.76
+     */
+    public void resolveArtifact(Artifact toResolve, List<ArtifactRepository> remoteRepositories, ArtifactRepository localRepository) throws ArtifactResolutionException, ArtifactNotFoundException {
         setUpLegacySupport();
         
         // must call internal Resolver API directly, as the RepositorySystem does not report an exception, 
         // even in ArtifactResolutionResult: resolve(ArtifactResolutionRequest request) catches the exception and
         // swallows ArtifactNotFoundException.
         // The existing calling code that handles these exception cannot work, in fact, when using resolve(ArtifactResolutionRequest request) API.
-        lookupComponent(ArtifactResolver.class).resolveAlways(sources, remoteRepositories, localRepository);
-        normalizePath(sources);
+        lookupComponent(ArtifactResolver.class).resolveAlways(toResolve, remoteRepositories, localRepository);
+        normalizePath(toResolve);
     }
 
     //TODO possibly rename.. build sounds like something else..
@@ -425,6 +458,20 @@ public final class MavenEmbedder {
 //        }
         return toRet;
     }
+    
+    private ModelResolver createNBResolver() {
+        MavenExecutionRequest rq = createMavenExecutionRequest();
+        NBRepositoryModelResolver resolver = new NBRepositoryModelResolver(this);
+        rq.getRemoteRepositories().stream().map(MavenEmbedder::settingsToModel).forEach(r -> {
+            try {
+                resolver.addRepository(r);
+            } catch (org.apache.maven.model.resolution.InvalidRepositoryException ex) {
+                // do nothing for now, maybe some one shot per url/id log in the future ?
+            }
+        });
+        return resolver;
+    }
+    
     /**
      * 
      * @param pom
@@ -439,11 +486,52 @@ public final class MavenEmbedder {
         req.setProcessPlugins(false);
         req.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
         req.setLocationTracking(true);
-        req.setModelResolver(new NBRepositoryModelResolver(this));
+        req.setModelResolver(createNBResolver());
         req.setSystemProperties(getSystemProperties());
         req.setUserProperties(embedderConfiguration.getUserProperties());
         return mb.build(req);
-        
+    }
+    
+    private static org.apache.maven.model.Repository settingsToModel(ArtifactRepository repo) {
+        org.apache.maven.model.Repository modelRepo = new org.apache.maven.model.Repository();
+        modelRepo.setId(repo.getId());
+        modelRepo.setLayout(repo.getLayout().getId());
+        modelRepo.setName(repo.getId());
+        modelRepo.setUrl(repo.getUrl());
+        return modelRepo;
+    }
+    
+    private static org.apache.maven.model.RepositoryPolicy settingsToModel(ArtifactRepositoryPolicy p) {
+        if (p == null) {
+            return null;
+        }
+        org.apache.maven.model.RepositoryPolicy r = new org.apache.maven.model.RepositoryPolicy();
+        r.setChecksumPolicy(p.getChecksumPolicy());
+        r.setUpdatePolicy(p.getUpdatePolicy());
+        r.setEnabled(p.isEnabled());
+        return r;
+    }
+    
+    private static org.apache.maven.model.Repository settingsToModel(Repository repo) {
+        org.apache.maven.model.Repository modelRepo = new org.apache.maven.model.Repository();
+        modelRepo.setId(repo.getId());
+        modelRepo.setLayout(repo.getLayout());
+        modelRepo.setName(repo.getName());
+        modelRepo.setUrl(repo.getUrl());
+        modelRepo.setReleases(settingsToModel(repo.getReleases()));
+        modelRepo.setSnapshots(settingsToModel(repo.getSnapshots()));
+        return modelRepo;
+    }
+    
+    private static org.apache.maven.model.RepositoryPolicy settingsToModel(RepositoryPolicy p) {
+        if (p == null) {
+            return null;
+        }
+        org.apache.maven.model.RepositoryPolicy r = new org.apache.maven.model.RepositoryPolicy();
+        r.setChecksumPolicy(p.getChecksumPolicy());
+        r.setUpdatePolicy(p.getUpdatePolicy());
+        r.setEnabled(p.isEnabled());
+        return r;
     }
     
     public List<String> getLifecyclePhases() {
