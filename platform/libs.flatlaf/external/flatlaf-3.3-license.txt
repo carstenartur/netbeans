@@ -1,8 +1,10 @@
-Name: NetBeans Application Launchers
-Version: 12.5
+Name: FlatLaf Look and Feel
+Description: FlatLaf Look and Feel
+Version: 3.3
+Files: flatlaf-3.3.jar
 License: Apache-2.0
-Origin: NetBeans
-Description: Windows Launchers for the NetBeans Applications
+Origin: FormDev Software GmbH.
+URL: https://www.formdev.com/flatlaf/
 
                                  Apache License
                            Version 2.0, January 2004
