@@ -313,10 +313,11 @@ public final class NbMavenProjectImpl implements Project {
     public @NonNull MavenProject loadMavenProject(MavenEmbedder embedder, List<String> activeProfiles, Properties properties) {
         ProjectActionContext.Builder b = ProjectActionContext.newBuilder(this).
                 withProfiles(activeProfiles);
-        for (String pn : properties.stringPropertyNames()) {
-            b.withProperty(pn, properties.getProperty(pn));
+        if (properties != null) {
+            for (String pn : properties.stringPropertyNames()) {
+                b.withProperty(pn, properties.getProperty(pn));
+            }
         }
-        
         return MavenProjectCache.loadMavenProject(projectFile, 
                 b.context(), null);
         /*
@@ -872,7 +873,7 @@ public final class NbMavenProjectImpl implements Project {
                 uris.add(root.toURI());
             }
         }
-        return uris.toArray(new URI[uris.size()]);
+        return uris.toArray(new URI[0]);
     }
 
     public URI[] getGeneratedSourceRoots(boolean test) {
@@ -946,7 +947,7 @@ public final class NbMavenProjectImpl implements Project {
             uris.addAll(BHTestUris);
         }
 
-        return uris.toArray(new URI[uris.size()]);
+        return uris.toArray(new URI[0]);
     }
 
     public URI getWebAppDirectory() {
@@ -1018,7 +1019,7 @@ public final class NbMavenProjectImpl implements Project {
             toRet.add(uri);
 //            }
         }
-        return toRet.toArray(new URI[toRet.size()]);
+        return toRet.toArray(new URI[0]);
     }
 
     public File[] getOtherRoots(boolean test) {
@@ -1232,7 +1233,7 @@ public final class NbMavenProjectImpl implements Project {
                 }
                 LOG.log(Level.FINE, "Composing lookups for {0}, packaging: {1}, lookups: {2}: ", 
                         new Object[] { watcher.getMavenProject().getFile(), newPackaging, newComponents });
-                setLookups(lookups.toArray(new Lookup[lookups.size()]));
+                setLookups(lookups.toArray(new Lookup[0]));
             }
         }
         
