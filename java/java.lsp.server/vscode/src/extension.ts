@@ -62,12 +62,13 @@ import { InputStep, MultiStepInput } from './utils';
 import { PropertiesView } from './propertiesView/propertiesView';
 import * as configuration from './jdk/configuration';
 import * as jdk from './jdk/jdk';
+import { validateJDKCompatibility } from './jdk/validation/validation';
 
 const API_VERSION : string = "1.0";
 export const COMMAND_PREFIX : string = "nbls";
 const DATABASE: string = 'Database';
 const listeners = new Map<string, string[]>();
-let client: Promise<NbLanguageClient>;
+export let client: Promise<NbLanguageClient>;
 let testAdapter: NbTestAdapter | undefined;
 let nbProcess : ChildProcess | null = null;
 let debugPort: number = -1;
@@ -184,6 +185,8 @@ function findJDK(onChange: (path : string | null) => void): void {
     }
 
     let currentJdk = find();
+    let projectJdk : string | undefined = getProjectJDKHome();
+    validateJDKCompatibility(currentJdk, projectJdk);
     let timeout: NodeJS.Timeout | undefined = undefined;
     workspace.onDidChangeConfiguration(params => {
         if (timeout) {
@@ -206,10 +209,12 @@ function findJDK(onChange: (path : string | null) => void): void {
             let newJdk = find();
             let newD = isDarkColorTheme();
             let newJavaEnabled = isJavaSupportEnabled();
-            if (newJdk !== currentJdk || newD != nowDark || newJavaEnabled != nowJavaEnabled) {
+            let newProjectJDK : string | undefined = getProjectJDKHome();
+            if (newJdk !== currentJdk || newD != nowDark || newJavaEnabled != nowJavaEnabled || newProjectJDK != projectJdk) {
                 nowDark = newD;
                 nowJavaEnabled = newJavaEnabled;
                 currentJdk = newJdk;
+                projectJdk = newProjectJDK;
                 onChange(currentJdk);
             }
         }, 0);
@@ -816,8 +821,39 @@ export function activate(context: ExtensionContext): VSNetBeansAPI {
 
     context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.cloud.ocid.copy',
         async (node) => {
-            const ocid : string = await commands.executeCommand(COMMAND_PREFIX + '.cloud.ocid.get', node.id);
+            const ocid = getValueAfterPrefix(node.contextValue, 'ocid:');
             vscode.env.clipboard.writeText(ocid);
+        }
+    ));
+
+    context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.cloud.publicIp.copy',
+        async (node) => {
+            const publicIp = getValueAfterPrefix(node.contextValue, 'publicIp:');
+            vscode.env.clipboard.writeText(publicIp);
+        }
+    ));
+
+    context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.cloud.imageUrl.copy',
+        async (node) => {
+            const imageUrl = getValueAfterPrefix(node.contextValue, 'imageUrl:');
+            vscode.env.clipboard.writeText("docker pull " + imageUrl);
+        }
+    ));
+
+    context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.cloud.computeInstance.ssh',
+        async (node) => {
+            const publicIp = getValueAfterPrefix(node.contextValue, 'publicIp:');
+            //TODO: For the first invocation for a given OCID, show instructions on how to set up SSH for a Compute Instance.
+            openSSHSession("opc", publicIp, node.label);
+        }
+    ));
+
+    context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.cloud.container.docker',
+        async (node) => {
+            const publicIp = getValueAfterPrefix(node.contextValue, 'publicIp:');
+            const imageUrl = getValueAfterPrefix(node.contextValue, 'imageUrl:');
+            //TODO: For the first invocation for a given OCID, show instructions on how to set up a Compute Instance.
+            runDockerSSH("opc", publicIp, imageUrl);
         }
     ));
 
@@ -896,6 +932,26 @@ function activateWithJDK(specifiedJDK: string | null, context: ExtensionContext,
     }
 }
 
+function openSSHSession(username: string, host: string, name?: string) {
+    let sessionName;
+    if (name === undefined) {
+        sessionName =`${username}@${host}`;
+    } else {
+        sessionName = name;
+    }
+
+    const terminal = vscode.window.createTerminal(`SSH: ${username}@${host}`);
+    terminal.sendText(`ssh ${username}@${host}`);
+    terminal.show();
+}
+
+function runDockerSSH(username: string, host: string, dockerImage: string) {
+   const sshCommand = `ssh ${username}@${host} "docker pull ${dockerImage} && docker run -p 8080:8080 -it ${dockerImage}"`;
+
+    const terminal = vscode.window.createTerminal('Remote Docker');
+    terminal.sendText(sshCommand);
+    terminal.show();
+}
 
 function killNbProcess(notifyKill : boolean, log : vscode.OutputChannel, specProcess?: ChildProcess) : Promise<void> {
     const p = nbProcess;
@@ -957,6 +1013,10 @@ function isDarkColorTheme() : boolean {
 
 function isJavaSupportEnabled() : boolean {
     return workspace.getConfiguration('netbeans')?.get('javaSupport.enabled') as boolean;
+}
+
+function getProjectJDKHome() : string {
+    return workspace.getConfiguration('netbeans')?.get('project.jdkhome') as string;
 }
 
 function doActivateWithJDK(specifiedJDK: string | null, context: ExtensionContext, log : vscode.OutputChannel, notifyKill: boolean,
@@ -1119,6 +1179,7 @@ function doActivateWithJDK(specifiedJDK: string | null, context: ExtensionContex
                 'netbeans.hints',
                 'netbeans.format',
                 'netbeans.java.imports',
+                'netbeans.project.jdkhome',
                 'java+.runConfig.vmOptions',
                 'java+.runConfig.cwd'
             ],
@@ -1312,7 +1373,21 @@ function doActivateWithJDK(specifiedJDK: string | null, context: ExtensionContex
         }
 
         async decorateTreeItem(vis : Visualizer, item : vscode.TreeItem) : Promise<vscode.TreeItem> {
-            item.description = getValueAfterPrefix(item.contextValue, "cloudAssetsReferenceName:");
+            const refName = getValueAfterPrefix(item.contextValue, "cloudAssetsReferenceName:");
+            if (refName !== undefined && refName !== null && refName.length > 0) {
+                item.description = refName;
+                return item;
+            }
+            const imageCount = getValueAfterPrefix(item.contextValue, "imageCount:");
+            const repositoryPublic: Boolean = "true" === getValueAfterPrefix(item.contextValue, "repositoryPublic:");
+            if (imageCount !== undefined && imageCount !== null && imageCount.length > 0) {
+                if (repositoryPublic) {
+                    item.description = imageCount + " (public)";
+                } else {
+                    item.description = imageCount + " (private)";
+                }
+                return item;
+            }
             return item;
         }
 
