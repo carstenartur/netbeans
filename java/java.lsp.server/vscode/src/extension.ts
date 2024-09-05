@@ -280,6 +280,7 @@ function wrapCommandWithProgress(lsCommand : string, title : string, log? : vsco
     return window.withProgress({ location: ProgressLocation.Window }, p => {
         return new Promise(async (resolve, reject) => {
             let c : LanguageClient = await client;
+            await vscode.commands.executeCommand('workbench.action.files.saveAll');
             const commands = await vscode.commands.getCommands();
             if (commands.includes(lsCommand)) {
                 p.report({ message: title });
@@ -619,6 +620,9 @@ export function activate(context: ExtensionContext): VSNetBeansAPI {
     context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.project.clean', (args) => {
         wrapProjectActionWithProgress('clean', undefined, 'Cleaning...', log, true, args);
     }));
+    context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.project.buildPushImage', () => {
+        wrapCommandWithProgress(COMMAND_PREFIX + '.cloud.assets.buildPushImage', 'Building and pushing container image', log, true);
+    }));
     context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.open.type', () => {
         wrapCommandWithProgress(COMMAND_PREFIX + '.quick.open', 'Opening type...', log, true).then(() => {
             commands.executeCommand('workbench.action.focusActiveEditorGroup');
@@ -864,11 +868,15 @@ export function activate(context: ExtensionContext): VSNetBeansAPI {
             const publicIp = getValueAfterPrefix(node.contextValue, 'publicIp:');
             const imageUrl = getValueAfterPrefix(node.contextValue, 'imageUrl:');
             const ocid = getValueAfterPrefix(node.contextValue, 'ocid:');
+            const isRepositoryPrivate = "false" === getValueAfterPrefix(node.parent.contextValue, "repositoryPublic:");
+            const registryUrl = imageUrl.split('/')[0];
 
             if (!shouldHideGuideFor(runImageGuide.viewType, ocid)){
                 runImageGuide.RunImageGuidePanel.createOrShow(context, {
                     publicIp,
-                    ocid
+                    ocid,
+                    isRepositoryPrivate,
+                    registryUrl
                 });
             }
 
@@ -964,8 +972,35 @@ function openSSHSession(username: string, host: string, name?: string) {
     terminal.show();
 }
 
-function runDockerSSH(username: string, host: string, dockerImage: string) {
-   const sshCommand = `ssh ${username}@${host} "docker pull ${dockerImage} && docker run -p 8080:8080 -it ${dockerImage}"`;
+interface ConfigFiles {
+    applicationProperties : string | null;
+    bootstrapProperties: string | null;
+}
+
+async function runDockerSSH(username: string, host: string, dockerImage: string) {
+    const configFiles: ConfigFiles = await vscode.commands.executeCommand('nbls.config.file.path') as ConfigFiles;
+    const { applicationProperties, bootstrapProperties } = configFiles;
+
+    const applicationPropertiesRemotePath = `/home/${username}/application.properties`;
+    const bootstrapPropertiesRemotePath = `/home/${username}/bootstrap.properties`;
+    const applicationPropertiesContainerPath = "/home/app/application.properties";
+    const bootstrapPropertiesContainerPath = "/home/app/bootstrap.properties";
+
+    let sshCommand = "";
+    let mountVolume = "";
+    let micronautConfigFilesEnv = "";
+    if (bootstrapProperties) {
+        sshCommand = `scp "${bootstrapProperties}" ${username}@${host}:${bootstrapPropertiesRemotePath} && `;
+        mountVolume = `-v ${bootstrapPropertiesRemotePath}:${bootstrapPropertiesContainerPath}:Z `;
+        micronautConfigFilesEnv = `${bootstrapPropertiesContainerPath}`;
+    }
+
+    if (applicationProperties) {
+        sshCommand += `scp "${applicationProperties}" ${username}@${host}:${applicationPropertiesRemotePath} && `;
+        mountVolume += ` -v ${applicationPropertiesRemotePath}:${applicationPropertiesContainerPath}:Z`;
+        micronautConfigFilesEnv += `${bootstrapProperties ? "," : ""}${applicationPropertiesContainerPath}`;
+    } 
+    sshCommand += `ssh ${username}@${host} "docker pull ${dockerImage} && docker run -p 8080:8080 ${mountVolume} -e MICRONAUT_CONFIG_FILES=${micronautConfigFilesEnv} -it ${dockerImage}"`;
 
     const terminal = vscode.window.createTerminal('Remote Docker');
     terminal.sendText(sshCommand);
@@ -1410,6 +1445,11 @@ function doActivateWithJDK(specifiedJDK: string | null, context: ExtensionContex
                 }
                 return item;
             }
+            const lifecycleState: String = getValueAfterPrefix(item.contextValue, "lifecycleState:");
+            if (lifecycleState) {
+                item.description = lifecycleState === "PENDING_DELETION" ? '(pending deletion)' : undefined;
+            }
+
             return item;
         }
 
