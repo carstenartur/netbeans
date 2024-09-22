@@ -18,18 +18,32 @@
  */
 package org.netbeans.modules.cloud.oracle.assets;
 
-import org.netbeans.modules.cloud.oracle.items.OCIItem;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import org.netbeans.spi.lsp.CommandProvider;
+import org.openide.util.lookup.ServiceProvider;
 
 /**
  *
  * @author Dusan Petrovic
  */
-public class CreateNewResourceItem extends OCIItem {
+@ServiceProvider(service = CommandProvider.class)
+public class CloudAssetsRefreshCommand implements CommandProvider {
+    
+    private static final String COMMAND_CLOUD_ASSETS_REFRESH = "nbls.cloud.assets.refresh"; //NOI18N
 
-    private static final String DISPLAY_NAME = "<Create new>";
+    private static final Set COMMANDS = Collections.singleton(COMMAND_CLOUD_ASSETS_REFRESH);
     
-    public CreateNewResourceItem() {
-        super(null, null, DISPLAY_NAME, null, null);
+    @Override
+    public Set<String> getCommands() {
+        return Collections.unmodifiableSet(COMMANDS);
     }
-    
+
+    @Override
+    public CompletableFuture<Object> runCommand(String command, List<Object> arguments) {
+        CloudAssets.getDefault().update();        
+        return CompletableFuture.completedFuture(null);
+    }
 }

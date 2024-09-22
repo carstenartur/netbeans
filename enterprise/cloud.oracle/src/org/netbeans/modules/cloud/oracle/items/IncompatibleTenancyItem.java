@@ -20,16 +20,8 @@ package org.netbeans.modules.cloud.oracle.items;
 
 /**
  *
- * @author Jan Horvath
+ * @author Dusan Petrovic
  */
-public class TenancyItem extends OCIItem {
-
-    public TenancyItem(OCID id, String name, String regionCode) {
-        super(id, null, name, id.getValue(), regionCode);
-    }
-
-    public TenancyItem() {
-    }
-
+public class IncompatibleTenancyItem extends TenancyItem {
     
 }

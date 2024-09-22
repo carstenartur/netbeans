@@ -41,10 +41,10 @@ import org.openide.util.lookup.ServiceProvider;
 public class OCIPropertiesProvider implements CommandProvider {
     private static final String  GET_DB_CONNECTION = "nbls.db.connection"; //NOI18N
 
-    private final ConfigFileGenerator configFileGenerator;
+    private final TempFileGenerator configFileGenerator;
 
     public OCIPropertiesProvider() {
-        this.configFileGenerator = new ConfigFileGenerator("db-", ".properties", GET_DB_CONNECTION, true); // NOI18N
+        this.configFileGenerator = new TempFileGenerator("db-", ".properties", GET_DB_CONNECTION, true); // NOI18N
     }
 
     @Override
@@ -72,12 +72,12 @@ public class OCIPropertiesProvider implements CommandProvider {
             try {
                 Path temp = configFileGenerator.writePropertiesFile(dbProps);
                 result.put("MICRONAUT_CONFIG_FILES", temp.toAbsolutePath().toString()); // NOI18N
-                ret.complete(result);
             } catch (IOException ex) {
                 ret.completeExceptionally(ex);
                 return ret;
             }
         }
+        ret.complete(result);
         return ret;
     }
 
