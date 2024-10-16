@@ -36,6 +36,18 @@
 	"contributes": {
 		"languages": [
 			{
+				"id": "java",
+				"extensions": [
+					".java",
+					".jav"
+				],
+				"aliases": [
+					"Java",
+					"java"
+				],
+				"configuration": "./language-configuration.json"
+			},
+			{
 				"id": "javascript",
 				"mimetypes": [
 					"text/javascript",
@@ -523,6 +535,11 @@
 				"icon": "$(play)"
 			},
 			{
+				"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.RunInClusterAction",
+				"title": "Run in Cluster",
+				"icon": "$(play)"
+			},
+			{
 				"command": "nbls.workspace.compile",
 				"title": "Compile Workspace",
 				"category": "Java"
@@ -611,6 +628,11 @@
 				"icon": "$(edit)"
 			},
 			{
+				"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.SetClusterNamespace",
+				"title": "Set a Cluster Namespace",
+				"icon": "$(edit)"
+			},
+			{
 				"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.RemoveFromProject",
 				"title": "Remove from Oracle Cloud Assets",
 				"icon": "$(remove)"
@@ -650,8 +672,13 @@
 				"icon": "$(add)"
 			},
 			{
+				"command": "nbls.cloud.assets.configmap.devops.upload",
+				"title": "Add Cloud Assets to ConfigMap whithin an OCI DevOps project",
+				"icon": "$(add)"
+			},
+			{
 				"command": "nbls.cloud.assets.configmap.upload",
-				"title": "Add Cloud Assets to ConfigMap",
+				"title": "Add Cloud Assets to ConfigMap whithin OKE cluster",
 				"icon": "$(add)"
 			},
 			{
@@ -722,8 +749,8 @@
 				"title": "Open Service Console"
 			},
 			{
-				"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.AddDbConnectionToVault",
-				"title": "Add to OCI Vault"
+				"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.AddSecretsToVault",
+				"title": "Add Sensitive Data to OCI Vault"
 			},
 			{
 				"command": "nbls.select.editor.projects",
@@ -854,6 +881,10 @@
 					"when": "false"
 				},
 				{
+					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.RunInClusterAction",
+					"when": "false"
+				},
+				{
 					"command": "nbls:Edit:org.openide.actions.DeleteAction",
 					"when": "false"
 				},
@@ -890,6 +921,10 @@
 					"when": "false"
 				},
 				{
+					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.SetClusterNamespace",
+					"when": "false"
+				},
+				{
 					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.RemoveFromProject",
 					"when": "false"
 				},
@@ -922,7 +957,7 @@
 					"when": "false"
 				},
 				{
-					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.AddDbConnectionToVault",
+					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.AddSecretsToVault",
 					"when": "false"
 				},
 				{
@@ -1066,9 +1101,9 @@
 					"group": "oci@300"
 				},
 				{
-					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.AddDbConnectionToVault",
-					"when": "viewItem =~ /class:org.netbeans.api.db.explorer.DatabaseConnection/",
-					"group": "oci@400"
+					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.AddSecretsToVault",
+					"when": "viewItem =~ /class:oracle.vault.VaultItem/",
+					"group": "oci@200"
 				},
 				{
 					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.CreateAutonomousDBAction",
@@ -1106,6 +1141,11 @@
 					"group": "inline@10"
 				},
 				{
+					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.RunInClusterAction",
+					"when": "viewItem =~ /clusterName:.*/ && viewItem =~ /imageUrl:.*/",
+					"group": "inline@10"
+				},
+				{
 					"command": "nbls.project.buildPushImage",
 					"when": "viewItem =~ /class:oracle.developer.ContainerRepositoryItem/",
 					"group": "inline@9"
@@ -1133,6 +1173,11 @@
 				{
 					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.SetReferenceName",
 					"when": "viewItem =~ /cap:refName/ && view == cloud.assets",
+					"group": "inline@14"
+				},
+				{
+					"command": "nbls:Tools:org.netbeans.modules.cloud.oracle.actions.SetClusterNamespace",
+					"when": "viewItem =~ /clusterNamespace:.*/ && view == cloud.assets",
 					"group": "inline@14"
 				},
 				{
@@ -1246,13 +1291,13 @@
 				"codeicon": "archive"
 			},
 			{
-                "uriExpression": "nbres:/org/netbeans/modules/cloud/oracle/resources/metrics.svg",
-                "codeicon": "graph-line"
-            },
-            {
-                "uriExpression": "nbres:/org/netbeans/modules/cloud/oracle/resources/metrics_namespace.svg",
-                "codeicon": "symbol-namespace"
-            },
+				"uriExpression": "nbres:/org/netbeans/modules/cloud/oracle/resources/metrics.svg",
+				"codeicon": "graph-line"
+			},
+			{
+				"uriExpression": "nbres:/org/netbeans/modules/cloud/oracle/resources/metrics_namespace.svg",
+				"codeicon": "symbol-namespace"
+			},
 			{
 				"uriExpression": "nbres:/org/netbeans/modules/cloud/oracle/resources/computeinstance.svg",
 				"codeicon": "server-environment"

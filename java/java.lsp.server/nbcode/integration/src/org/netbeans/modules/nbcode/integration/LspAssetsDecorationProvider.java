@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.logging.Logger;
 import org.netbeans.modules.cloud.oracle.assets.CloudAssets;
 import org.netbeans.modules.cloud.oracle.bucket.BucketItem;
+import org.netbeans.modules.cloud.oracle.compute.ClusterItem;
 import org.netbeans.modules.cloud.oracle.compute.ComputeInstanceItem;
 import org.netbeans.modules.cloud.oracle.database.DatabaseItem;
 import org.netbeans.modules.cloud.oracle.developer.ContainerRepositoryItem;
@@ -47,10 +48,12 @@ public class LspAssetsDecorationProvider implements TreeDataProvider.Factory {
     public static final String CTXVALUE_CAP_REFERENCE_NAME = "cap:refName"; // NOI18N
     public static final String CTXVALUE_PREFIX_REFERENCE_NAME = "cloudAssetsReferenceName:"; // NOI18N
     public static final String CTXVALUE_PREFIX_PUBLIC_IP = "publicIp:"; // NOI18N
+    public static final String CTXVALUE_PREFIX_CLUSTER_NAME = "clusterName:"; // NOI18N
     public static final String CTXVALUE_PREFIX_IMAGE_URL = "imageUrl:"; // NOI18N
     public static final String CTXVALUE_PREFIX_IMAGE_COUNT = "imageCount:"; // NOI18N
     public static final String CTXVALUE_PREFIX_REPOSITORY_PUBLIC = "repositoryPublic:"; // NOI18N
     public static final String CTXVALUE_PREFIX_SECRET_LIFECYCLE_STATE = "lifecycleState:"; // NOI18N
+    public static final String CTXVALUE_PREFIX_CLUSTER_NAMESPACE = "clusterNamespace:"; // NOI18N
 
     @Override
     public synchronized TreeDataProvider createProvider(String treeId) {
@@ -76,6 +79,13 @@ public class LspAssetsDecorationProvider implements TreeDataProvider.Factory {
                 d.addContextValues(CTXVALUE_PREFIX_REFERENCE_NAME + refName);
                 set = true;
             }
+            if (item instanceof ClusterItem) {
+                String namespace = ((ClusterItem) item).getNamespace();
+                if (namespace != null) {
+                    d.addContextValues(CTXVALUE_PREFIX_CLUSTER_NAMESPACE + namespace);
+                    set = true;
+                }
+            }
             if (item instanceof ComputeInstanceItem) {
                 String publicIp = ((ComputeInstanceItem) item).getPublicIp();
                 if (publicIp != null) {
@@ -94,6 +104,11 @@ public class LspAssetsDecorationProvider implements TreeDataProvider.Factory {
                 Optional<OCIItem> instance = CloudAssets.getDefault().getAssignedItems().stream().filter(i -> i.getClass().equals(ComputeInstanceItem.class)).findFirst();
                 if (instance.isPresent()) {
                     d.addContextValues(CTXVALUE_PREFIX_PUBLIC_IP + ((ComputeInstanceItem) instance.get()).getPublicIp());
+                } else {
+                    ClusterItem cluster = CloudAssets.getDefault().getItem(ClusterItem.class);
+                    if (cluster != null) {
+                         d.addContextValues(CTXVALUE_PREFIX_CLUSTER_NAME + cluster.getName());
+                    }
                 }
                 d.addContextValues(CTXVALUE_PREFIX_IMAGE_URL + imageUrl);
                 set = true;

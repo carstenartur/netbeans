@@ -45,7 +45,7 @@ import {
 import * as net from 'net';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ChildProcess } from 'child_process';
+import { spawnSync, ChildProcess } from 'child_process';
 import * as vscode from 'vscode';
 import * as ls from 'vscode-languageserver-protocol';
 import * as launcher from './nbcode';
@@ -72,10 +72,14 @@ export const COMMAND_PREFIX : string = "nbls";
 const DATABASE: string = 'Database';
 const listeners = new Map<string, string[]>();
 export let client: Promise<NbLanguageClient>;
+export let clientRuntimeJDK : string | null = null;
+export const MINIMAL_JDK_VERSION = 17;
+
 let testAdapter: NbTestAdapter | undefined;
 let nbProcess : ChildProcess | null = null;
 let debugPort: number = -1;
 let consoleLog: boolean = !!process.env['ENABLE_CONSOLE_LOG'];
+let specifiedJDKWarned : string[] = [];
 
 export class NbLanguageClient extends LanguageClient {
     private _treeViewService: TreeViewService;
@@ -189,7 +193,7 @@ function findJDK(onChange: (path : string | null) => void): void {
 
     let currentJdk = find();
     let projectJdk : string | undefined = getProjectJDKHome();
-    validateJDKCompatibility(currentJdk, projectJdk);
+    validateJDKCompatibility(projectJdk);
     let timeout: NodeJS.Timeout | undefined = undefined;
     workspace.onDidChangeConfiguration(params => {
         if (timeout) {
@@ -396,12 +400,16 @@ export function activate(context: ExtensionContext): VSNetBeansAPI {
     );
     context.subscriptions.push(vscode.commands.registerCommand('cloud.assets.config.create', async function (viewItem) {
             const CONFIG_LOCAL = 'Open a preview of the config in the editor';
-            const CONFIG_TO_CM = 'Upload the config to a ConfigMap artifact in an OCI DevOps Project';
-            const selected: any = await window.showQuickPick([CONFIG_LOCAL, CONFIG_TO_CM], { placeHolder: 'Select a target for the config' });
-            if (selected == CONFIG_TO_CM) {
-                await commands.executeCommand('nbls.cloud.assets.configmap.upload');
+            const CONFIG_TO_DEVOPS_CM = 'Upload the config to a ConfigMap artifact whithin an OCI DevOps Project';
+            const CONFIG_TO_OKE_CM = 'Upload the config to a ConfigMap artifact whithin OKE cluster';
+            const selected: any = await window.showQuickPick([CONFIG_LOCAL, CONFIG_TO_OKE_CM, CONFIG_TO_DEVOPS_CM], { placeHolder: 'Select a target for the config' });
+            if (selected == CONFIG_TO_DEVOPS_CM) {
+                await commands.executeCommand('nbls.cloud.assets.configmap.devops.upload');
                 return;
-            } 
+            } else if (selected == CONFIG_TO_OKE_CM) {
+                await commands.executeCommand('nbls.cloud.assets.configmap.upload');
+                return;               
+            }
             const content = await vscode.commands.executeCommand('nbls.cloud.assets.config.create.local') as string;
             const document = vscode.Uri.parse(`${scheme}:application.properties?${encodeURIComponent(content)}`);
             vscode.workspace.openTextDocument(document).then(doc => {
@@ -462,7 +470,51 @@ export function activate(context: ExtensionContext): VSNetBeansAPI {
     checkConflict();
 
     // find acceptable JDK and launch the Java part
-    findJDK((specifiedJDK) => {
+    findJDK(async (specifiedJDK) => {
+        const osExeSuffix = process.platform === 'win32' ? '.exe' : '';
+        let jdkOK : boolean = true;
+        let javaExecPath : string;
+        if (!specifiedJDK) {
+            javaExecPath = 'java';
+        } else {
+            javaExecPath = path.resolve(specifiedJDK, 'bin', 'java');
+            jdkOK = fs.existsSync(path.resolve(specifiedJDK, 'bin', `java${osExeSuffix}`)) && fs.existsSync(path.resolve(specifiedJDK, 'bin', `javac${osExeSuffix}`));
+        }
+        if (jdkOK) {
+            log.appendLine(`Verifying java: ${javaExecPath}`);
+            // let the shell interpret PATH and .exe extension
+            let javaCheck = spawnSync(`${javaExecPath} -version`, { shell : true });
+            if (javaCheck.error || javaCheck.status) {
+                jdkOK = false;
+            } else {
+                javaCheck.stderr.toString().split('\n').find(l => {
+                    // yes, versions like 1.8 (up to 9) will be interpreted as 1, which is OK for < comparison
+                    let re = /.* version \"([0-9]+)\.[^"]+\".*/.exec(l);
+                    if (re) {
+                        let versionNumber = Number(re[1]);
+                        if (versionNumber < MINIMAL_JDK_VERSION) {
+                            jdkOK = false;
+                        }
+                    }
+                });
+            }
+        }
+        let warnedJDKs : string[] = specifiedJDKWarned; 
+        if (!jdkOK && !warnedJDKs.includes(specifiedJDK || '')) {
+            const msg = specifiedJDK ? 
+                `The current path to JDK "${specifiedJDK}" may be invalid. A valid JDK ${MINIMAL_JDK_VERSION}+ is required by Apache NetBeans Language Server to run.
+                You should configure a proper JDK for Apache NetBeans and/or other technologies. Do you want to run JDK configuration now?` :
+                `A valid JDK ${MINIMAL_JDK_VERSION}+ is required by Apache NetBeans Language Server to run, but none was found. You should configure a proper JDK for Apache NetBeans and/or other technologies. ` +
+                'Do you want to run JDK configuration now?';
+            const Y = "Yes";
+            const N = "No";
+            if (await vscode.window.showErrorMessage(msg, Y, N) == Y) {
+                vscode.commands.executeCommand('nbls.jdk.configuration');
+                return;
+            } else {
+                warnedJDKs.push(specifiedJDK || '');
+            }
+        }
         let currentClusters = findClusters(context.extensionPath).sort();
         const dsSorter = (a: TextDocumentFilter, b: TextDocumentFilter) => {
             return (a.language || '').localeCompare(b.language || '')
@@ -809,11 +861,11 @@ export function activate(context: ExtensionContext): VSNetBeansAPI {
             }
         }
     }));
-    context.subscriptions.push(commands.registerCommand('nbls.workspace.symbols', async (query) => {
+    context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.workspace.symbols', async (query) => {
         const c = await client;
         return (await c.sendRequest<SymbolInformation[]>('workspace/symbol', { 'query': query })) ?? [];
     }));
-    context.subscriptions.push(commands.registerCommand('nbls.workspace.symbol.resolve', async (symbol) => {
+    context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.workspace.symbol.resolve', async (symbol) => {
         const c = await client;
         return (await c.sendRequest<SymbolInformation>('workspaceSymbol/resolve', symbol)) ?? null;
     }));
@@ -827,7 +879,7 @@ export function activate(context: ExtensionContext): VSNetBeansAPI {
     context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.startup.condition', async () => {
         return client;
     }));
-    context.subscriptions.push(commands.registerCommand('nbls.addEventListener', (eventName, listener) => {
+    context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.addEventListener', (eventName, listener) => {
         let ls = listeners.get(eventName);
         if (!ls) {
             ls = [];
@@ -835,7 +887,7 @@ export function activate(context: ExtensionContext): VSNetBeansAPI {
         }
         ls.push(listener);
     }));
-    context.subscriptions.push(commands.registerCommand('nbls.node.properties.edit',
+    context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.node.properties.edit',
         async (node) => await PropertiesView.createOrShow(context, node, (await client).findTreeViewService())));
 
     context.subscriptions.push(commands.registerCommand(COMMAND_PREFIX + '.cloud.ocid.copy',
@@ -898,7 +950,7 @@ export function activate(context: ExtensionContext): VSNetBeansAPI {
 
     const archiveFileProvider = <vscode.TextDocumentContentProvider> {
         provideTextDocumentContent: async (uri: vscode.Uri, token: vscode.CancellationToken): Promise<string> => {
-            return await commands.executeCommand('nbls.get.archive.file.content', uri.toString());
+            return await commands.executeCommand(COMMAND_PREFIX + '.get.archive.file.content', uri.toString());
         }
     };
     context.subscriptions.push(workspace.registerTextDocumentContentProvider('jar', archiveFileProvider));
@@ -939,6 +991,7 @@ function activateWithJDK(specifiedJDK: string | null, context: ExtensionContext,
     client = new Promise<NbLanguageClient>((clientOK, clientErr) => {
         setClient = [
             function (c : NbLanguageClient) {
+                clientRuntimeJDK = specifiedJDK;
                 clientOK(c);
                 if (clientResolve) {
                     clientResolve(c);
@@ -1148,7 +1201,7 @@ function doActivateWithJDK(specifiedJDK: string | null, context: ExtensionContex
         storagePath : userdir,
         jdkHome : specifiedJDK,
         verbose: beVerbose
-    };
+    };    
     let launchMsg = `Launching Apache NetBeans Language Server with ${specifiedJDK ? specifiedJDK : 'default system JDK'} and userdir ${userdir}`;
     handleLog(log, launchMsg);
     vscode.window.setStatusBarMessage(launchMsg, 2000);
@@ -1503,7 +1556,11 @@ function doActivateWithJDK(specifiedJDK: string | null, context: ExtensionContex
             if (lifecycleState) {
                 item.description = lifecycleState === "PENDING_DELETION" ? '(pending deletion)' : undefined;
             }
-
+            const clusterNamespace = getValueAfterPrefix(item.contextValue, "clusterNamespace:");
+            if (clusterNamespace) {
+                item.description = clusterNamespace;
+                return item;
+            }
             return item;
         }
 
