@@ -428,11 +428,11 @@ jobs:
         run: ant -quiet -Dcluster.config=$CLUSTER_CONFIG test -Dtest.includes=NoTestsJustBuild
 
       # 13-14 min for javadoc; JDK version must be synced with nb-javac
-      - name: Set up JDK 24-ea for javadoc
+      - name: Set up JDK 23 for javadoc
         if: env.test_javadoc == 'true' && success()
         uses: actions/setup-java@v4
         with:
-          java-version: 24-ea 
+          java-version: 23 
           distribution: ${{ env.DEFAULT_JAVA_DISTRIBUTION }}
 
       - name: Build javadoc
@@ -833,7 +833,7 @@ jobs:
     timeout-minutes: 50
     strategy:
       matrix:
-        java: [ '17', '21', '24-ea' ]
+        java: [ '17', '21', '23' ]
         exclude:
           - java: ${{ github.event_name == 'pull_request' && 'nothing' || '21' }}
       fail-fast: false
@@ -1493,7 +1493,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        java: [ '17', '21', '24-ea' ]
+        java: [ '17', '21', '23' ]
         exclude:
           - java: ${{ github.event_name == 'pull_request' && 'nothing' || '21' }}
       fail-fast: false
@@ -2016,10 +2016,6 @@ jobs:
 #      - name: j2ee.sun.ddui
 #        run: ant $OPTS -f enterprise/j2ee.sun.ddui test
 
-# Fails + Slow
-#      - name: jakarta.web.beans
-#        run: ant $OPTS -f enterprise/jakarta.web.beans test
-
       - name: javaee.wildfly
         run: .github/retry.sh ant $OPTS -f enterprise/javaee.wildfly test
 
@@ -2061,9 +2057,8 @@ jobs:
       - name: tomcat5
         run: ant $OPTS -f enterprise/tomcat5 test
 
-# Fails
-#      - name: web.beans
-#        run: ant $OPTS -f enterprise/web.beans test
+      - name: web.beans
+        run: ant $OPTS -f enterprise/web.beans test
 
 # Fails + Slow
 #      - name: web.core.syntax
